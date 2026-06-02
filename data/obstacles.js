@@ -30,39 +30,46 @@ export const obstacles = [
   {
     id:          'festival-elephant',
     avoidWith:   'duck',
-    visualWidth:  160,  // widened to match natural 3:2 sprite aspect (was 60)
-    visualHeight: 100,  // unchanged — vertical geometry preserved for duck mechanic
+    visualWidth:  120,  // reduced from 160 — less imposing, better matches hitbox zone
+    visualHeight: 100,  // unchanged — vertical geometry must stay for duck mechanic
     floatHeight:    0,  // (obs.y = GROUND_Y − 100 = 150)
     //
-    // Hitbox geometry (vertical geometry identical to original):
-    //   hitbox top    = 150 + 5  = 155
-    //   hitbox bottom = 155 + 63 = 218
+    // Hitbox geometry:
+    //   hitbox top    = 150 + 8  = 158
+    //   hitbox bottom = 158 + 55 = 213
     //
-    // Standing performer (y 190 → 250): collides (190 < 218 AND 250 > 155) ✓
-    // Ducking  performer (y 220 → 250): safe      (220 > 218)              ✓
-    // Jumping at apex   (bot ≈ 160):   collides   (160 > 155)              ✓  unjumpable
+    // Standing performer (y 190 → 250): collides (190 < 213 AND 250 > 158) ✓
+    // Ducking  performer (y 220 → 250): safe      (220 > 213, margin 7 px) ✓
+    // Jumping at apex   (bot ≈ 160):   collides   (160 > 158)              ✓  unjumpable
     //
-    // offsetX:20 centres the hitbox inside the wider 160 px visual box.
-    hitbox: { width: 120, height: 63, offsetX: 20, offsetY: 5 },
+    // offsetX:24 — trunk tip in the 120 px image is at ~19 px; 5 px forgiveness.
+    // offsetY:8  — howdah crown in the 120 px image is at ~15 px;
+    //              was 5 (10 px above visible body), now 8 (7 px above) — removes
+    //              the dead zone that caused collision before the elephant was visible.
+    hitbox: { width: 72, height: 55, offsetX: 24, offsetY: 8 },
     spriteKey:   'elephant',
     variants:    [1],
   },
   {
     id:          'crow',
     avoidWith:   'duck',
-    visualWidth:   90,  // logical pixels
-    visualHeight:  60,  // logical pixels
+    visualWidth:   90,  // logical pixels (unchanged)
+    visualHeight:  60,  // logical pixels (unchanged)
     floatHeight:   30,  // floats 30 px above ground  (obs.y = GROUND_Y − 60 − 30 = 160)
     //
     // Hitbox geometry:
-    //   hitbox top    = 160 + 5  = 165
-    //   hitbox bottom = 165 + 40 = 205
+    //   hitbox top    = 160 + 8  = 168
+    //   hitbox bottom = 168 + 35 = 203
     //
-    // Standing performer (y 190 → 250): collides (190 < 205 AND 250 > 165) ✓
-    // Ducking  performer (y 220 → 250): safe      (220 > 205)              ✓
-    // Jumping at apex   (bot ≈ 160):   safe       (160 < 165)              ✓  barely clears
-    // Jumping mid-arc   (bot ≈ 200):   collides   (200 > 165)              ✓  only apex is safe
-    hitbox: { width: 70, height: 40, offsetX: 10, offsetY: 5 },
+    // Standing performer (y 190 → 250): collides (190 < 203 AND 250 > 168) ✓
+    // Ducking  performer (y 220 → 250): safe      (220 > 203, margin 17 px)✓  comfortable
+    // Jumping at apex   (bot ≈ 160):   safe       (160 < 168, margin  8 px)✓  barely clears
+    // Jumping mid-arc   (bot ≈ 185):   collides   (185 > 168)              ✓  duck is primary
+    //
+    // offsetX:10→15: crow body starts at ~14 px; offsetX=10 was inside transparent zone.
+    // offsetY:5→8:   crow body top at ~8 px;  tight but correct.
+    // height:40→35:  duck margin 15 px → 17 px — more comfortable and fair.
+    hitbox: { width: 60, height: 35, offsetX: 15, offsetY: 8 },
     spriteKey:   'crow',
     variants:    [1],
   },

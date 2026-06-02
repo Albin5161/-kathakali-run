@@ -10,10 +10,11 @@ const GROUND_TILE_H =  60;
 const GROUND_TILE_Y = GROUND_Y - 10; // y=240: grass crown 10 px above ground line
 
 // Performer sprite display dimensions.
-// Hitbox is 40×60. Sprite is drawn larger (64×86) centred on the hitbox,
-// with 26 px overhead for the headdress and 12 px overhang on each side for costume.
-const SPRITE_RUN_W = 64;
-const SPRITE_RUN_H = 86;
+// Hitbox is 40×60. Sprite is drawn larger (80×108) centred on the hitbox,
+// with 48 px overhead for the headdress and 20 px overhang on each side for costume.
+// Increased from 64×86 to make the performer proportionate to the environment.
+const SPRITE_RUN_W = 80;
+const SPRITE_RUN_H = 108;
 
 export class Renderer {
   constructor(ctx, assets = {}) {
@@ -38,14 +39,20 @@ export class Renderer {
     // ── Background ────────────────────────────────────────────────────────────
     const bgImg = this._assets.background;
     if (bgImg) {
-      // Scale to canvas width; centre-crop the height.
-      // kerala-background.png is 1672×941 (aspect 1.78:1).
-      // Canvas is 800×300 (aspect 2.67:1) — much wider — so the image is
-      // scaled to 800 px wide (height becomes ~450 px) and the top/bottom
-      // are cropped equally to fit the 300 px canvas.
+      // Scale to canvas width and draw from the TOP of the image (no centre-crop).
+      // kerala-background.png is 1672×941. Scaled to 800 px wide → ~450 px tall.
+      // Drawing from y=0 shows sky → clouds → treeline → houses, stopping just
+      // above the ground tile. The previous centre-crop showed the open backwater
+      // in the middle of the canvas, making the ground appear to float.
+      // Clip to GROUND_Y so the background never draws over the ground strip;
+      // the ground tile's grass crown overlaps the scene edge by 10 px naturally.
       const scaledH = Math.round(bgImg.naturalHeight * CANVAS_WIDTH / bgImg.naturalWidth);
-      const cropY   = Math.round((scaledH - CANVAS_HEIGHT) / 2);
-      ctx.drawImage(bgImg, 0, -cropY, CANVAS_WIDTH, scaledH);
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(0, 0, CANVAS_WIDTH, GROUND_Y);
+      ctx.clip();
+      ctx.drawImage(bgImg, 0, 0, CANVAS_WIDTH, scaledH);
+      ctx.restore();
     } else {
       ctx.fillStyle = '#dff0f8';
       ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
