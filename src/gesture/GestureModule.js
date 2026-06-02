@@ -94,6 +94,21 @@ export class GestureModule {
       console.log('[GestureModule] HandDetector.load() resolved — model ready ✓');
       this._status = 'detector ready';
 
+      // Wire immediate dispatch: result → gesture → input, all in the onmessage task.
+      // This replaces the old poll-on-next-rAF pattern and removes one frame of lag.
+      this._detector.onResult = (result) => {
+        const lm0        = result.landmarks?.[0];
+        const newGesture = lm0 ? recognizeGesture(lm0) : 'NONE';
+        if (newGesture !== this._gesture) {
+          console.log(
+            `[GestureModule] gesture: ${this._gesture} → ${newGesture}`,
+            `| gestureInput=${this._gestureInput ? 'set' : 'NULL'}`,
+          );
+        }
+        this._gesture = newGesture;
+        this._gestureInput?.update(newGesture);
+      };
+
       // DEBUG: dump pipeline state 5 s after the model is ready so we can
       // see whether frames are actually being sent and results received.
       setTimeout(() => {
@@ -194,20 +209,8 @@ export class GestureModule {
     }
 
     this._detector.detect(this._video);
-
-    const lm0 = this._detector.result?.landmarks?.[0];
-    this._gesture = lm0 ? recognizeGesture(lm0) : 'NONE';
-
-    // DEBUG ── log every gesture transition so we can see if update() is reached
-    if (this._gesture !== this._dbgLastGesture) {
-      console.log(
-        `[GestureModule] gesture: ${this._dbgLastGesture ?? 'init'} → ${this._gesture}`,
-        `| gestureInput=${this._gestureInput ? 'set' : 'NULL'}`,
-      );
-      this._dbgLastGesture = this._gesture;
-    }
-
-    this._gestureInput?.update(this._gesture);
+    // gesture recognition and gestureInput.update() now run immediately inside
+    // HandDetector.onResult (the onmessage callback), not here.
 
     this._drawLandmarks(ctx);
     this._drawGestureLabel(ctx);

@@ -1,18 +1,21 @@
 // Main-thread manager for the MediaPipe Web Worker.
 // Exposes { ready, result } for GestureModule to poll each animation frame.
+// onResult(result) is called immediately when the worker returns — no rAF wait.
 
-const INFER_EVERY_N_FRAMES = 2; // ~30 fps inference vs 60 fps display
+const INFER_EVERY_N_FRAMES = 1; // send every display frame; worker _busy flag prevents flooding
 
 export class HandDetector {
   constructor() {
-    this._worker      = null;
-    this._busy        = false;
-    this._frameCount  = 0;
-    this._framesSent  = 0;
-    this._resultsRecv = 0;
-    this.ready        = false;
-    this.result       = null;   // { landmarks, handedness } — plain arrays
-    this.lastError    = null;   // last worker error string, or null
+    this._worker        = null;
+    this._busy          = false;
+    this._frameCount    = 0;
+    this._framesSent    = 0;
+    this._resultsRecv   = 0;
+    this._detectSentAt  = 0;    // performance.now() when the last frame was dispatched
+    this.ready          = false;
+    this.result         = null;  // { landmarks, handedness } — plain arrays
+    this.lastError      = null;  // last worker error string, or null
+    this.onResult       = null;  // (result) => void — set by GestureModule for immediate dispatch
   }
 
   // Creates the Worker, sends 'load', resolves when ready.
@@ -45,10 +48,17 @@ export class HandDetector {
           this._busy = false;
           this._resultsRecv++;
           this.result = { landmarks: data.landmarks, handedness: data.handedness };
+
+          const inferenceMs = (performance.now() - this._detectSentAt).toFixed(1);
           console.log(
-            `[HandDetector] Result #${this._resultsRecv} — hands: ${data.landmarks.length}`,
-            data.landmarks.length > 0 ? `conf: ${(data.handedness?.[0]?.[0]?.score * 100 | 0)}%` : '',
+            `[HandDetector] Result #${this._resultsRecv} — hands: ${data.landmarks.length}` +
+            (data.landmarks.length > 0 ? `  conf: ${(data.handedness?.[0]?.[0]?.score * 100 | 0)}%` : '') +
+            `  inference: ${inferenceMs}ms`,
           );
+
+          // Fire immediately — gesture recognition and input update happen here,
+          // not on the next rAF tick.
+          this.onResult?.(this.result);
 
         } else if (data.type === 'detectError') {
           console.error('[HandDetector] Worker detect error:', data.message);
@@ -89,8 +99,9 @@ export class HandDetector {
       return;
     }
 
-    this._busy = true;
+    this._busy         = true;
     this._framesSent++;
+    this._detectSentAt = performance.now();
     console.log(`[HandDetector] Sending frame #${this._framesSent} to Worker`);
 
     createImageBitmap(videoEl)
