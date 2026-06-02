@@ -1,5 +1,8 @@
-// Orchestrates camera, preview, MediaPipe detection, and landmark rendering.
+// Orchestrates camera, preview, MediaPipe detection, landmark rendering,
+// and gesture recognition.
 // Loaded via dynamic import() on first use so it never affects page load.
+
+import { recognizeGesture } from './GestureRecognizer.js';
 
 const HAND_CONNECTIONS = [
   [0, 1],  [1, 2],  [2, 3],  [3, 4],
@@ -19,6 +22,7 @@ export class GestureModule {
     this._detector   = null;
     this._rafId      = null;
     this._status     = 'idle';   // displayed on the debug panel
+    this._gesture    = 'NONE';   // last recognised gesture
 
     this._onVisibilityChange = this._onVisibilityChange.bind(this);
     this._onBeforeUnload     = this._onBeforeUnload.bind(this);
@@ -61,6 +65,7 @@ export class GestureModule {
     this._rafId = null;
     this._detector?.terminate();
     this._detector = null;
+    this._gesture  = 'NONE';
     this._stopStream();
     this._unmountPreview();
     this._status = 'idle';
@@ -186,7 +191,12 @@ export class GestureModule {
     }
 
     this._detector.detect(this._video);
+
+    const lm0 = this._detector.result?.landmarks?.[0];
+    this._gesture = lm0 ? recognizeGesture(lm0) : 'NONE';
+
     this._drawLandmarks(ctx);
+    this._drawGestureLabel(ctx);
     this._drawDebugPanel(ctx);
   }
 
@@ -237,6 +247,33 @@ export class GestureModule {
     ctx.fillText(conf, 10, 9);
   }
 
+  _drawGestureLabel(ctx) {
+    if (this._gesture === 'NONE') return;
+
+    const COLORS = { PALM: '#00E676', FIST: '#FF6B35' };
+    const color  = COLORS[this._gesture] ?? '#ccc';
+    const label  = this._gesture;
+
+    // Scale font proportionally so the label reads at ~28 px in the CSS display.
+    // The canvas internal width (camera resolution) is CSS-scaled to 200 px, so:
+    //   canvas font size = desired_visual_px × (canvas.width / 200)
+    const fontSize = Math.round(this._canvas.width * 0.14);
+    ctx.font         = `bold ${fontSize}px monospace`;
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'top';
+
+    const cx  = this._canvas.width / 2;
+    const cy  = Math.round(fontSize * 0.25);
+    const tw  = ctx.measureText(label).width;
+    const pad = Math.round(fontSize * 0.2);
+
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+    ctx.fillRect(cx - tw / 2 - pad, cy - pad / 2, tw + pad * 2, fontSize + pad);
+
+    ctx.fillStyle = color;
+    ctx.fillText(label, cx, cy);
+  }
+
   // On-canvas debug panel — always visible so pipeline state is readable
   // without opening DevTools.
   _drawDebugPanel(ctx) {
@@ -248,10 +285,11 @@ export class GestureModule {
       : '—';
 
     const lines = [
-      `status : ${this._status}`,
+      `status  : ${this._status}`,
       `detector: ${this._detector
         ? (this._detector.ready ? 'ready' : 'loading…')
         : 'null (failed)'}`,
+      `gesture : ${this._gesture}`,
       `hands   : ${handCount}  conf: ${conf}`,
       `frames  : sent=${this._detector?._framesSent ?? 0}  ` +
                `recv=${this._detector?._resultsRecv ?? 0}`,
