@@ -47,9 +47,9 @@ inputBus.on(ACTION.START, () => {
   }
 });
 
-inputBus.on(ACTION.JUMP,       () => performer.jump());
-inputBus.on(ACTION.DUCK_START, () => performer.duckStart());
-inputBus.on(ACTION.DUCK_END,   () => performer.duckEnd());
+inputBus.on(ACTION.JUMP,       () => { console.log('[InputBus] JUMP → performer.jump()'); performer.jump(); });
+inputBus.on(ACTION.DUCK_START, () => { console.log('[InputBus] DUCK_START → performer.duckStart()'); performer.duckStart(); });
+inputBus.on(ACTION.DUCK_END,   () => { console.log('[InputBus] DUCK_END → performer.duckEnd()'); performer.duckEnd(); });
 
 keyboard.attach();
 

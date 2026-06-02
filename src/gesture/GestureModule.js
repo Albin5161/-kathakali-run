@@ -197,6 +197,16 @@ export class GestureModule {
 
     const lm0 = this._detector.result?.landmarks?.[0];
     this._gesture = lm0 ? recognizeGesture(lm0) : 'NONE';
+
+    // DEBUG ── log every gesture transition so we can see if update() is reached
+    if (this._gesture !== this._dbgLastGesture) {
+      console.log(
+        `[GestureModule] gesture: ${this._dbgLastGesture ?? 'init'} → ${this._gesture}`,
+        `| gestureInput=${this._gestureInput ? 'set' : 'NULL'}`,
+      );
+      this._dbgLastGesture = this._gesture;
+    }
+
     this._gestureInput?.update(this._gesture);
 
     this._drawLandmarks(ctx);

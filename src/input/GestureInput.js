@@ -21,28 +21,46 @@ export class GestureInput {
     const prev    = this._prev;
     const now     = performance.now();
 
+    // DEBUG ── log every transition so we can verify state and edge conditions
+    if (gesture !== prev) {
+      console.log(
+        `[GestureInput] ${prev} → ${gesture}`,
+        `| state="${this._gameState.state}" playing=${playing}`,
+        `| cooldownLeft=${Math.max(0, JUMP_COOLDOWN_MS - (now - this._lastJumpAt)).toFixed(0)}ms`,
+      );
+    }
+
     if (playing) {
       // JUMP — rising edge (any → PALM) + cooldown against detector flicker
       if (gesture === 'PALM' && prev !== 'PALM') {
         if (now - this._lastJumpAt >= JUMP_COOLDOWN_MS) {
+          console.log('[GestureInput] emitting JUMP');
           this._bus.emit(ACTION.JUMP);
           this._lastJumpAt = now;
+        } else {
+          console.log(`[GestureInput] JUMP suppressed by cooldown`);
         }
       }
 
       // DUCK_START — rising edge (any → FIST)
       if (gesture === 'FIST' && prev !== 'FIST') {
+        console.log('[GestureInput] emitting DUCK_START');
         this._bus.emit(ACTION.DUCK_START);
       }
 
       // DUCK_END — falling edge (FIST → anything else)
       if (prev === 'FIST' && gesture !== 'FIST') {
+        console.log('[GestureInput] emitting DUCK_END');
         this._bus.emit(ACTION.DUCK_END);
       }
     }
 
-    // Always advance _prev, even when not playing, so edge detection is clean
-    // when the game state changes mid-gesture.
-    this._prev = gesture;
+    // Only advance _prev while the game is actually playing.
+    // If we advanced it when not playing, a palm/fist shown before the game
+    // starts would load _prev with a non-NONE value, and the rising edge would
+    // never fire once the game starts (because prev already equals gesture).
+    // Keeping _prev='NONE' while idle means the first in-game gesture always
+    // triggers its action.
+    if (playing) this._prev = gesture;
   }
 }
