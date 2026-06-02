@@ -1,0 +1,10 @@
+[build]
+  publish = "."
+  command = ""
+
+# No-cache on HTML so users always get the latest version.
+# JS/data files also get no-cache since filenames don't include content hashes.
+[[headers]]
+  for = "/*"
+  [headers.values]
+    Cache-Control = "no-cache, no-store, must-revalidate"
