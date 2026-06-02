@@ -41,6 +41,7 @@ export class Performer {
     if (this.state === PERFORMER_STATE.JUMPING) return;
     this.state     = PERFORMER_STATE.JUMPING;
     this.velocityY = JUMP_VELOCITY;
+    console.log(`[Jump] START  velocityY=${JUMP_VELOCITY}  y=${this.y.toFixed(2)}`);
   }
 
   // Switches to the ducking stance. Ignored while airborne.
@@ -61,14 +62,22 @@ export class Performer {
   update(delta) {
     if (this.state !== PERFORMER_STATE.JUMPING) return;
 
+    const prevVY = this.velocityY;
     this.velocityY += GRAVITY * delta;
     this.y         += this.velocityY * delta;
+
+    console.log(
+      `[Jump] GRAVITY  delta=${delta.toFixed(4)}s` +
+      `  vy: ${prevVY.toFixed(1)}→${this.velocityY.toFixed(1)}` +
+      `  y=${this.y.toFixed(2)}`
+    );
 
     // Clamp to ground and transition back to running on landing
     if (this.y >= GROUND_Y - PERFORMER_STAND_HEIGHT) {
       this.y         = GROUND_Y - PERFORMER_STAND_HEIGHT;
       this.velocityY = 0;
       this.state     = PERFORMER_STATE.RUNNING;
+      console.log(`[Jump] LAND  y=${this.y.toFixed(2)}`);
     }
   }
 

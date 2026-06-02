@@ -222,8 +222,6 @@ export class GestureModule {
     const h  = this._canvas.height;
     const lm = result.landmarks[0];
 
-    console.log(`[GestureModule] Drawing landmarks — count: ${lm.length}`);
-
     // Mirror x to match the flipped video
     const mx = (x) => (1 - x) * w;
     const my = (y) => y * h;
