@@ -96,6 +96,27 @@ const loop = new GameLoop((delta) => {
 
 loop.start();
 
+// ── Player counter ────────────────────────────────────────────────────────────
+(async () => {
+  const NS      = 'kathakali-run';
+  const KEY     = 'total-players';
+  const BASE    = `https://api.counterapi.dev/v1/${NS}/${KEY}`;
+  const LS_FLAG = 'kathakali_run_played';
+  const el      = document.getElementById('player-counter');
+  if (!el) return;
+
+  try {
+    const firstVisit = !localStorage.getItem(LS_FLAG);
+    if (firstVisit) localStorage.setItem(LS_FLAG, '1');
+    const res = await fetch(firstVisit ? `${BASE}/up` : BASE);
+    if (!res.ok) throw new Error();
+    const { count } = await res.json();
+    el.textContent = `Total Players: ${count.toLocaleString()}`;
+  } catch {
+    // el retains "Total Players: --"
+  }
+})();
+
 // ── Webcam toggle ─────────────────────────────────────────────────────────────
 const webcamBtn      = document.getElementById('webcam-toggle');
 const gestureOverlay = document.getElementById('gesture-overlay');

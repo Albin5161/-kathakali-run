@@ -57,6 +57,22 @@
     #webcam-toggle:hover:not(:disabled) { background: #34495e; color: #fff; }
     #webcam-toggle.active               { background: #1a5276; color: #85c1e9; border-color: #2980b9; }
     #webcam-toggle:disabled             { opacity: 0.45; cursor: not-allowed; }
+
+    #player-counter {
+      position: fixed;
+      bottom: 16px;
+      right: 16px;
+      font-family: monospace;
+      font-size: 12px;
+      color: #aaa;
+      background: rgba(28, 28, 46, 0.85);
+      padding: 5px 10px;
+      border-radius: 4px;
+      border: 1px solid #444;
+      pointer-events: none;
+      z-index: 10;
+      letter-spacing: 0.02em;
+    }
   </style>
 </head>
 <body>
@@ -86,6 +102,8 @@
   <div id="gesture-overlay" aria-hidden="true"></div>
 
   <button id="webcam-toggle" type="button">Enable Webcam</button>
+
+  <div id="player-counter">Total Players: --</div>
 
   <script type="module" src="src/main.js"></script>
 </body>
