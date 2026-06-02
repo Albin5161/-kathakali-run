@@ -9,12 +9,34 @@ const GROUND_TILE_W = 120;
 const GROUND_TILE_H =  60;
 const GROUND_TILE_Y = GROUND_Y - 10; // y=240: grass crown 10 px above ground line
 
+// Render-only offsets applied to obstacle sprites during drawImage().
+// These shift the visual without touching obs.y, hitbox, or the collision system.
+//
+// Elephant: source 1536×1024 drawn at 120×100.
+// Alpha-channel measurement (α>10): lowest visible pixel at source y=720
+//   → display y = 720/1024 × 100 = 70.31 px from sprite top.
+// Without offset, feet appear at canvas y = obs.y(150) + 70.31 = 220.31.
+//
+// Ground tile (707×353, drawn at GROUND_TILE_Y=240, display height 60 px):
+//   transparent top padding = 21.93 display px → first grass pixel at canvas y=261.93.
+//   The performer stands with feet at GROUND_Y=250 (background clips there),
+//   which is the visual ground line shared by all characters.
+//
+// Required offset so elephant feet reach GROUND_Y=250:
+//   render_offset = 250 − 150 − 70.31 = 29.69 → 30
+// Offset +30: feet at 150 + 30 + 70.31 = 250.31 ≈ 250 = GROUND_Y. ✓
+const OBSTACLE_RENDER_OFFSETS = {
+  'festival-elephant': { x: 0, y: 30 },
+};
+
 // Performer sprite display dimensions.
 // Hitbox is 40×60. Sprite is drawn larger (80×108) centred on the hitbox,
 // with 48 px overhead for the headdress and 20 px overhang on each side for costume.
-// Increased from 64×86 to make the performer proportionate to the environment.
 const SPRITE_RUN_W = 80;
 const SPRITE_RUN_H = 108;
+// The source sprite (1536×1024) has ~16 px of empty space below the character's feet.
+// Shifting the draw call down by this amount pins the feet to GROUND_Y.
+const SPRITE_FOOT_OFFSET = 16;
 
 export class Renderer {
   constructor(ctx, assets = {}) {
@@ -39,19 +61,17 @@ export class Renderer {
     // ── Background ────────────────────────────────────────────────────────────
     const bgImg = this._assets.background;
     if (bgImg) {
-      // Scale to canvas width and draw from the TOP of the image (no centre-crop).
-      // kerala-background.png is 1672×941. Scaled to 800 px wide → ~450 px tall.
-      // Drawing from y=0 shows sky → clouds → treeline → houses, stopping just
-      // above the ground tile. The previous centre-crop showed the open backwater
-      // in the middle of the canvas, making the ground appear to float.
-      // Clip to GROUND_Y so the background never draws over the ground strip;
-      // the ground tile's grass crown overlaps the scene edge by 10 px naturally.
+      // Scale to canvas width. kerala-background.png is 1672×941; scaled to
+      // 800 px wide → ~450 px tall. Drawing from y=−80 shifts the image up so
+      // we skip the blank upper-sky area and show more of the treeline, houses,
+      // and backwater. Clip to GROUND_Y so the background never draws over the
+      // ground strip; the ground tile's grass crown overlaps by 10 px naturally.
       const scaledH = Math.round(bgImg.naturalHeight * CANVAS_WIDTH / bgImg.naturalWidth);
       ctx.save();
       ctx.beginPath();
       ctx.rect(0, 0, CANVAS_WIDTH, GROUND_Y);
       ctx.clip();
-      ctx.drawImage(bgImg, 0, 0, CANVAS_WIDTH, scaledH);
+      ctx.drawImage(bgImg, 0, -80, CANVAS_WIDTH, scaledH);
       ctx.restore();
     } else {
       ctx.fillStyle = '#dff0f8';
@@ -107,21 +127,33 @@ export class Renderer {
     const bot = hb.y + hb.height;       // bottom of hitbox = GROUND_Y
 
     if (performer.state === PERFORMER_STATE.DUCKING) {
-      // No duck sprite available — procedural fallback always used here.
-      this._drawDucking(ctx, cx, bot);
+      const img = this._assets['performerRun'];
+      if (img) {
+        // No dedicated duck sprite — squash the run sprite to half height so the
+        // character reads as crouching. Apply half the foot offset proportionally.
+        const duckH = Math.round(SPRITE_RUN_H / 2);
+        ctx.drawImage(
+          img,
+          cx - SPRITE_RUN_W / 2,
+          bot - duckH + Math.round(SPRITE_FOOT_OFFSET / 2),
+          SPRITE_RUN_W,
+          duckH,
+        );
+      } else {
+        this._drawDucking(ctx, cx, bot);
+      }
     } else {
       const jumping = performer.state === PERFORMER_STATE.JUMPING;
       const imgKey  = jumping ? 'performerJump' : 'performerRun';
       const img     = this._assets[imgKey];
 
       if (img) {
-        // Centre the sprite on the hitbox horizontally; pin its bottom to GROUND_Y.
-        // The extra height above the hitbox (SPRITE_RUN_H − hitbox.height = 26 px)
-        // holds the headdress, which is visual-only and does not affect collision.
+        // Centre the sprite on the hitbox; shift down by SPRITE_FOOT_OFFSET so the
+        // character's feet align with GROUND_Y rather than floating above it.
         ctx.drawImage(
           img,
           cx - SPRITE_RUN_W / 2,
-          bot - SPRITE_RUN_H,
+          bot - SPRITE_RUN_H + SPRITE_FOOT_OFFSET,
           SPRITE_RUN_W,
           SPRITE_RUN_H,
         );
@@ -149,22 +181,10 @@ export class Renderer {
       const { id, hitbox, visualWidth, visualHeight, spriteKey } = obs.type;
       const img = this._assets[spriteKey];
 
-      if (id === 'fallen-tree') {
+      if (id === 'festival-elephant') {
         if (img) {
-          // fallen-tree.png has no alpha channel (RGB only). The multiply blend
-          // mode makes white pixels transparent: white × any = any.
-          // This is the cleanest code-only fix without re-exporting the asset.
-          ctx.save();
-          ctx.globalCompositeOperation = 'multiply';
-          ctx.drawImage(img, obs.x, obs.y, visualWidth, visualHeight);
-          ctx.restore();
-        } else {
-          this._drawCoconutTree(ctx, obs.x, obs.y);
-        }
-
-      } else if (id === 'festival-elephant') {
-        if (img) {
-          ctx.drawImage(img, obs.x, obs.y, visualWidth, visualHeight);
+          const ro = OBSTACLE_RENDER_OFFSETS[id] ?? { x: 0, y: 0 };
+          ctx.drawImage(img, obs.x + ro.x, obs.y + ro.y, visualWidth, visualHeight);
         } else {
           this._drawFestivalElephant(ctx, obs.x, obs.y);
         }
@@ -236,44 +256,6 @@ export class Renderer {
     ctx.lineTo(ox + 14, oy + 38);
     ctx.closePath();
     ctx.fill();
-  }
-
-  // ── Procedural fallback: coconut tree (kept for fallen-tree fallback) ────────
-
-  _drawCoconutTree(ctx, ox, oy) {
-    const tcx = ox + 16;
-
-    ctx.strokeStyle = '#7D5A2C';
-    ctx.lineWidth   = 9;
-    ctx.lineCap     = 'round';
-    ctx.beginPath();
-    ctx.moveTo(tcx + 1, oy + 60);
-    ctx.quadraticCurveTo(tcx + 5, oy + 38, tcx - 2, oy + 22);
-    ctx.stroke();
-
-    ctx.strokeStyle = '#A07840';
-    ctx.lineWidth   = 3;
-    ctx.beginPath();
-    ctx.moveTo(tcx - 1, oy + 60);
-    ctx.quadraticCurveTo(tcx + 2, oy + 38, tcx - 4, oy + 22);
-    ctx.stroke();
-
-    const fx = tcx - 2;
-    const fy = oy + 22;
-
-    ctx.strokeStyle = '#388E3C';
-    ctx.lineWidth   = 2.5;
-    ctx.lineCap     = 'round';
-
-    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.quadraticCurveTo(ox,      oy + 10, ox,      oy + 24); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.quadraticCurveTo(ox + 5,  oy + 5,  ox + 7,  oy + 16); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.quadraticCurveTo(fx - 2,  oy + 6,  fx + 2,  oy);      ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.quadraticCurveTo(ox + 24, oy + 6,  ox + 26, oy + 16); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.quadraticCurveTo(ox + 28, oy + 12, ox + 32, oy + 24); ctx.stroke();
-
-    ctx.fillStyle = '#4E2A04';
-    ctx.beginPath(); ctx.arc(fx - 3, fy + 6, 4,   0, Math.PI * 2); ctx.fill();
-    ctx.beginPath(); ctx.arc(fx + 4, fy + 5, 3.5, 0, Math.PI * 2); ctx.fill();
   }
 
   // ── Procedural fallback: festival elephant ──────────────────────────────────

@@ -45,7 +45,7 @@ export const SPEED_TIERS = [
 export const SPAWN_INITIAL_DELAY = 600; // pixels of world-scroll before the first obstacle
 
 // ─── Debug ────────────────────────────────────────────────────────────────────
-export const DEBUG_HITBOXES      = false; // set true to overlay hitbox rectangles for QA
+export const DEBUG_HITBOXES      = false; // overlay hitbox rectangles for QA
 export const ELEPHANT_TEST_MODE  = false; // set true to spawn only elephants for QA
 
 // ─── Key bindings ─────────────────────────────────────────────────────────────

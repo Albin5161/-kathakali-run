@@ -7,7 +7,6 @@ const MANIFEST = {
   groundTile:    'assets/ground/ground-tile.png',
   performerRun:  'assets/characters/kathakali-run.png',
   performerJump: 'assets/characters/kathakali-jump.png',
-  fallenTree:    'assets/obstacles/fallen-tree.png',
   elephant:      'assets/obstacles/elephant.png',
   crow:          'assets/obstacles/crow.png',
 };

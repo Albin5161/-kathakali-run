@@ -10,43 +10,35 @@
 
 export const obstacles = [
   {
-    id:          'fallen-tree',
-    avoidWith:   'jump',
-    visualWidth:  110,  // logical pixels — wide, flat fallen palm
-    visualHeight:  35,  // logical pixels  (obs.y = GROUND_Y − 35 = 215)
-    floatHeight:    0,
-    //
-    // Hitbox geometry:
-    //   hitbox top    = 215 + 7  = 222
-    //   hitbox bottom = 222 + 28 = 250  (= GROUND_Y)
-    //
-    // Standing performer (y 190 → 250): collides (190 < 250 AND 250 > 222) ✓
-    // Ducking  performer (y 220 → 250): collides (220 < 250 AND 250 > 222) ✓  must jump, not duck
-    // Jumping at apex   (bot ≈ 160):   safe      (160 < 222)               ✓
-    hitbox: { width: 90, height: 28, offsetX: 10, offsetY: 7 },
-    spriteKey:   'fallenTree',
-    variants:    [1],
-  },
-  {
     id:          'festival-elephant',
-    avoidWith:   'duck',
-    visualWidth:  120,  // reduced from 160 — less imposing, better matches hitbox zone
-    visualHeight: 100,  // unchanged — vertical geometry must stay for duck mechanic
+    avoidWith:   'jump',
+    visualWidth:  120,
+    visualHeight: 100,
     floatHeight:    0,  // (obs.y = GROUND_Y − 100 = 150)
     //
-    // Hitbox geometry:
-    //   hitbox top    = 150 + 8  = 158
-    //   hitbox bottom = 158 + 55 = 213
+    // Sprite is rendered with OBSTACLE_RENDER_OFFSETS y=+5 (Renderer.js).
+    // Sprite draws at canvas y=155; physics position (obs.y=150) and hitbox unchanged.
     //
-    // Standing performer (y 190 → 250): collides (190 < 213 AND 250 > 158) ✓
-    // Ducking  performer (y 220 → 250): safe      (220 > 213, margin 7 px) ✓
-    // Jumping at apex   (bot ≈ 160):   collides   (160 > 158)              ✓  unjumpable
+    // JUMP OBSTACLE: player must jump over; ducking and standing both collide.
     //
-    // offsetX:24 — trunk tip in the 120 px image is at ~19 px; 5 px forgiveness.
-    // offsetY:8  — howdah crown in the 120 px image is at ~15 px;
-    //              was 5 (10 px above visible body), now 8 (7 px above) — removes
-    //              the dead zone that caused collision before the elephant was visible.
-    hitbox: { width: 72, height: 55, offsetX: 24, offsetY: 8 },
+    // Alpha-channel measurement of elephant.png (1536×1024, threshold α>10):
+    //   visible content: source x=507–1146, y=304–720
+    //   at 120×100 display: x≈40–90, y≈30–70
+    //
+    // With render offset y=+30 (Renderer.js line 29), sprite draws at canvas y=180.
+    // Visible top at sprite y=30 → canvas 210 → physics offset 60.
+    // Visible feet at sprite y=70 → canvas 250 → physics offset 100 (= GROUND_Y).
+    //
+    // Hitbox geometry (2 px inside visible left/right; bottom pinned to GROUND_Y):
+    //   hitbox top   (abs) = 150 + 62 = 212   ← 2 px inside content top (physics 60)
+    //   hitbox bottom(abs) = 150 + 100 = 250  ← GROUND_Y; feet of sprite
+    //   hitbox left        = obs.x + 42       ← 2 px inside content left  (sprite x≈40)
+    //   hitbox right       = obs.x + 88       ← 2 px inside content right (sprite x≈90)
+    //
+    // Standing performer (y 190 → 250): 190 < 250 AND 250 > 212 → collides ✓
+    // Ducking  performer (y 220 → 250): 220 < 250 AND 250 > 212 → collides ✓
+    // Jumping at apex   (bot     ≈ 160): 160 < 212 → clears (52 px) ✓
+    hitbox: { width: 46, height: 38, offsetX: 42, offsetY: 62 },
     spriteKey:   'elephant',
     variants:    [1],
   },
