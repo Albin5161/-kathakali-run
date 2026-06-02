@@ -8,6 +8,7 @@ import { ObstacleManager } from './entities/ObstacleManager.js';
 import { ScoreManager }   from './entities/ScoreManager.js';
 import { InputBus, ACTION } from './input/InputBus.js';
 import { KeyboardInput }  from './input/KeyboardInput.js';
+import { GestureInput }   from './input/GestureInput.js';
 import { obstacles as obstacleTypes } from '../data/obstacles.js';
 
 // ── Canvas setup ──────────────────────────────────────────────────────────────
@@ -32,6 +33,7 @@ const obstacleManager = new ObstacleManager(obstacleTypes);
 const scoreManager    = new ScoreManager();
 const inputBus        = new InputBus();
 const keyboard        = new KeyboardInput(inputBus, gameState);
+const gestureInput    = new GestureInput(inputBus, gameState);
 
 // ── Input subscribers ─────────────────────────────────────────────────────────
 inputBus.on(ACTION.START, () => {
@@ -101,7 +103,7 @@ webcamBtn.addEventListener('click', async () => {
     // Lazy-load on first use
     if (!gestureModule) {
       const { GestureModule } = await import('./gesture/GestureModule.js');
-      gestureModule = new GestureModule(gestureOverlay);
+      gestureModule = new GestureModule(gestureOverlay, gestureInput);
     }
 
     const ok = await gestureModule.enable();

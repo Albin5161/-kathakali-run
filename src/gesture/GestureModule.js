@@ -14,15 +14,16 @@ const HAND_CONNECTIONS = [
 ];
 
 export class GestureModule {
-  constructor(overlayEl) {
-    this._overlayEl  = overlayEl;
-    this._stream     = null;
-    this._video      = null;
-    this._canvas     = null;
-    this._detector   = null;
-    this._rafId      = null;
-    this._status     = 'idle';   // displayed on the debug panel
-    this._gesture    = 'NONE';   // last recognised gesture
+  constructor(overlayEl, gestureInput = null) {
+    this._overlayEl    = overlayEl;
+    this._gestureInput = gestureInput; // GestureInput | null
+    this._stream       = null;
+    this._video        = null;
+    this._canvas       = null;
+    this._detector     = null;
+    this._rafId        = null;
+    this._status       = 'idle';  // displayed on the debug panel
+    this._gesture      = 'NONE';  // last recognised gesture
 
     this._onVisibilityChange = this._onVisibilityChange.bind(this);
     this._onBeforeUnload     = this._onBeforeUnload.bind(this);
@@ -65,6 +66,8 @@ export class GestureModule {
     this._rafId = null;
     this._detector?.terminate();
     this._detector = null;
+    // Force a clean DUCK_END if the performer is ducking when webcam is turned off.
+    this._gestureInput?.update('NONE');
     this._gesture  = 'NONE';
     this._stopStream();
     this._unmountPreview();
@@ -194,6 +197,7 @@ export class GestureModule {
 
     const lm0 = this._detector.result?.landmarks?.[0];
     this._gesture = lm0 ? recognizeGesture(lm0) : 'NONE';
+    this._gestureInput?.update(this._gesture);
 
     this._drawLandmarks(ctx);
     this._drawGestureLabel(ctx);
