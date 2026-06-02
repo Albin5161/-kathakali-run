@@ -98,9 +98,6 @@ loop.start();
 
 // ── Player counter ────────────────────────────────────────────────────────────
 (async () => {
-  const NS      = 'kathakali-run';
-  const KEY     = 'total-players';
-  const BASE    = `https://api.counterapi.dev/v1/${NS}/${KEY}`;
   const LS_FLAG = 'kathakali_run_played';
   const el      = document.getElementById('player-counter');
   if (!el) return;
@@ -108,7 +105,7 @@ loop.start();
   try {
     const firstVisit = !localStorage.getItem(LS_FLAG);
     if (firstVisit) localStorage.setItem(LS_FLAG, '1');
-    const res = await fetch(firstVisit ? `${BASE}/up` : BASE);
+    const res = await fetch('/api/counter', { method: firstVisit ? 'POST' : 'GET' });
     if (!res.ok) throw new Error();
     const { count } = await res.json();
     el.textContent = `Total Players: ${count.toLocaleString()}`;
