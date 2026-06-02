@@ -48,8 +48,9 @@ export class ObstacleManager {
     this.obstacles.push({
       // x: left edge of the visual bounding box, starting just off the right edge
       x:    CANVAS_WIDTH,
-      // y: top of the visual bounding box — static, since the bottom always sits on GROUND_Y
-      y:    GROUND_Y - type.visualHeight,
+      // y: top of the visual bounding box.
+      // floatHeight lifts flying obstacles (e.g. crow) above the ground line.
+      y:    GROUND_Y - type.visualHeight - (type.floatHeight ?? 0),
       type,
     });
   }

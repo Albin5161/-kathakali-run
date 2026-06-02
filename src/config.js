@@ -46,7 +46,7 @@ export const SPAWN_INITIAL_DELAY = 600; // pixels of world-scroll before the fir
 
 // ─── Debug ────────────────────────────────────────────────────────────────────
 export const DEBUG_HITBOXES      = false; // set true to overlay hitbox rectangles for QA
-export const ELEPHANT_TEST_MODE  = true;  // set false to re-enable normal mixed spawning
+export const ELEPHANT_TEST_MODE  = false; // set true to spawn only elephants for QA
 
 // ─── Key bindings ─────────────────────────────────────────────────────────────
 // KeyboardInput reads this map; key codes are never hard-coded in that module.

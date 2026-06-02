@@ -2,36 +2,77 @@ import { CANVAS_WIDTH, CANVAS_HEIGHT, GROUND_Y, DEBUG_HITBOXES, ELEPHANT_TEST_MO
 import { STATE }           from './GameState.js';
 import { PERFORMER_STATE } from '../entities/Performer.js';
 
+// Ground tile display dimensions.
+// Source tile is 1774×887. Displayed at 60 px tall → width = 1774×(60/887) ≈ 120 px.
+// The tile is drawn 10 px above GROUND_Y so the grass crown overlaps the scene edge.
+const GROUND_TILE_W = 120;
+const GROUND_TILE_H =  60;
+const GROUND_TILE_Y = GROUND_Y - 10; // y=240: grass crown 10 px above ground line
+
+// Performer sprite display dimensions.
+// Hitbox is 40×60. Sprite is drawn larger (64×86) centred on the hitbox,
+// with 26 px overhead for the headdress and 12 px overhang on each side for costume.
+const SPRITE_RUN_W = 64;
+const SPRITE_RUN_H = 86;
+
 export class Renderer {
-  constructor(ctx) {
-    this._ctx = ctx;
+  constructor(ctx, assets = {}) {
+    this._ctx      = ctx;
+    this._assets   = assets;
+    this._groundX  = 0;  // scrolling offset for the ground tile (px, increases when playing)
   }
 
-  // Called every frame regardless of game state. All coordinates are logical pixels.
-  // score / highScore are plain numbers passed in from ScoreManager.
-  draw(gameState, performer, obstacles, score, highScore) {
+  // Called every frame regardless of game state.
+  // delta (seconds) and speed (px/s) are used only to advance the ground scroll.
+  draw(gameState, performer, obstacles, score, highScore, delta = 0, speed = 0) {
     const ctx = this._ctx;
+
+    // ── Advance ground scroll ─────────────────────────────────────────────────
+    if (gameState.state === STATE.PLAYING) {
+      this._groundX = (this._groundX + speed * delta) % GROUND_TILE_W;
+    }
 
     // ── Clear ─────────────────────────────────────────────────────────────────
     ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
-    // ── Sky ───────────────────────────────────────────────────────────────────
-    ctx.fillStyle = '#dff0f8';
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    // ── Background ────────────────────────────────────────────────────────────
+    const bgImg = this._assets.background;
+    if (bgImg) {
+      // Scale to canvas width; centre-crop the height.
+      // kerala-background.png is 1672×941 (aspect 1.78:1).
+      // Canvas is 800×300 (aspect 2.67:1) — much wider — so the image is
+      // scaled to 800 px wide (height becomes ~450 px) and the top/bottom
+      // are cropped equally to fit the 300 px canvas.
+      const scaledH = Math.round(bgImg.naturalHeight * CANVAS_WIDTH / bgImg.naturalWidth);
+      const cropY   = Math.round((scaledH - CANVAS_HEIGHT) / 2);
+      ctx.drawImage(bgImg, 0, -cropY, CANVAS_WIDTH, scaledH);
+    } else {
+      ctx.fillStyle = '#dff0f8';
+      ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    }
 
-    // ── Ground fill (below the line) ──────────────────────────────────────────
-    ctx.fillStyle = '#c4a96b';
-    ctx.fillRect(0, GROUND_Y, CANVAS_WIDTH, CANVAS_HEIGHT - GROUND_Y);
-
-    // ── Ground line ───────────────────────────────────────────────────────────
-    ctx.save();
-    ctx.strokeStyle = '#5a3e1b';
-    ctx.lineWidth   = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, GROUND_Y);
-    ctx.lineTo(CANVAS_WIDTH, GROUND_Y);
-    ctx.stroke();
-    ctx.restore();
+    // ── Ground ────────────────────────────────────────────────────────────────
+    const groundImg = this._assets.groundTile;
+    if (groundImg) {
+      // Tile the ground strip. startX is negative so the first tile is
+      // partially off-screen left, creating seamless infinite scroll.
+      const startX = -(this._groundX % GROUND_TILE_W);
+      for (let x = startX; x < CANVAS_WIDTH; x += GROUND_TILE_W) {
+        ctx.drawImage(groundImg, x, GROUND_TILE_Y, GROUND_TILE_W, GROUND_TILE_H);
+      }
+    } else {
+      // Procedural fallback
+      ctx.fillStyle = '#c4a96b';
+      ctx.fillRect(0, GROUND_Y, CANVAS_WIDTH, CANVAS_HEIGHT - GROUND_Y);
+      ctx.save();
+      ctx.strokeStyle = '#5a3e1b';
+      ctx.lineWidth   = 2;
+      ctx.beginPath();
+      ctx.moveTo(0, GROUND_Y);
+      ctx.lineTo(CANVAS_WIDTH, GROUND_Y);
+      ctx.stroke();
+      ctx.restore();
+    }
 
     // ── Obstacles ─────────────────────────────────────────────────────────────
     this._drawObstacles(ctx, obstacles);
@@ -55,17 +96,33 @@ export class Renderer {
     ctx.save();
 
     const hb  = performer.hitbox;
-    const cx  = hb.x + hb.width / 2;  // horizontal centre of hitbox
-    const bot = hb.y + hb.height;      // bottom of hitbox = GROUND_Y
+    const cx  = hb.x + hb.width / 2;   // horizontal centre of hitbox
+    const bot = hb.y + hb.height;       // bottom of hitbox = GROUND_Y
 
     if (performer.state === PERFORMER_STATE.DUCKING) {
+      // No duck sprite available — procedural fallback always used here.
       this._drawDucking(ctx, cx, bot);
     } else {
       const jumping = performer.state === PERFORMER_STATE.JUMPING;
-      this._drawStanding(ctx, hb.y, cx, bot, jumping);
+      const imgKey  = jumping ? 'performerJump' : 'performerRun';
+      const img     = this._assets[imgKey];
+
+      if (img) {
+        // Centre the sprite on the hitbox horizontally; pin its bottom to GROUND_Y.
+        // The extra height above the hitbox (SPRITE_RUN_H − hitbox.height = 26 px)
+        // holds the headdress, which is visual-only and does not affect collision.
+        ctx.drawImage(
+          img,
+          cx - SPRITE_RUN_W / 2,
+          bot - SPRITE_RUN_H,
+          SPRITE_RUN_W,
+          SPRITE_RUN_H,
+        );
+      } else {
+        this._drawStanding(ctx, hb.y, cx, bot, jumping);
+      }
     }
 
-    // Debug: outline the performer hitbox in green
     if (DEBUG_HITBOXES) {
       ctx.strokeStyle = 'rgba(0, 255, 0, 0.7)';
       ctx.lineWidth   = 1;
@@ -82,40 +139,111 @@ export class Renderer {
     ctx.save();
 
     for (const obs of obstacles) {
-      if (obs.type.id === 'coconut-tree') {
-        this._drawCoconutTree(ctx, obs.x, obs.y);
-      } else if (obs.type.id === 'festival-elephant') {
-        this._drawFestivalElephant(ctx, obs.x, obs.y);
+      const { id, hitbox, visualWidth, visualHeight, spriteKey } = obs.type;
+      const img = this._assets[spriteKey];
+
+      if (id === 'fallen-tree') {
+        if (img) {
+          // fallen-tree.png has no alpha channel (RGB only). The multiply blend
+          // mode makes white pixels transparent: white × any = any.
+          // This is the cleanest code-only fix without re-exporting the asset.
+          ctx.save();
+          ctx.globalCompositeOperation = 'multiply';
+          ctx.drawImage(img, obs.x, obs.y, visualWidth, visualHeight);
+          ctx.restore();
+        } else {
+          this._drawCoconutTree(ctx, obs.x, obs.y);
+        }
+
+      } else if (id === 'festival-elephant') {
+        if (img) {
+          ctx.drawImage(img, obs.x, obs.y, visualWidth, visualHeight);
+        } else {
+          this._drawFestivalElephant(ctx, obs.x, obs.y);
+        }
+
+      } else if (id === 'crow') {
+        if (img) {
+          ctx.drawImage(img, obs.x, obs.y, visualWidth, visualHeight);
+        } else {
+          this._drawCrow(ctx, obs.x, obs.y);
+        }
       }
 
-      // Debug: outline the obstacle hitbox in red
       if (DEBUG_HITBOXES) {
-        const h = obs.type.hitbox;
         ctx.strokeStyle = 'rgba(255, 0, 0, 0.7)';
         ctx.lineWidth   = 1;
-        ctx.strokeRect(obs.x + h.offsetX, obs.y + h.offsetY, h.width, h.height);
+        ctx.strokeRect(obs.x + hitbox.offsetX, obs.y + hitbox.offsetY, hitbox.width, hitbox.height);
       }
     }
 
     ctx.restore();
   }
 
-  // Procedural coconut palm tree (visual bounding box: 32 × 60 logical pixels).
-  // ox, oy = top-left of the visual box; bottom edge sits on GROUND_Y.
-  _drawCoconutTree(ctx, ox, oy) {
-    const tcx = ox + 16; // trunk horizontal centre
+  // ── Procedural fallback: crow ────────────────────────────────────────────────
+  // Used when crow.png fails to load. Visual bounding box: 90×60 px.
 
-    // ── Trunk ─────────────────────────────────────────────────────────────────
-    // Slight rightward lean via a quadratic bezier for organic feel
+  _drawCrow(ctx, ox, oy) {
+    ctx.fillStyle = '#1a1a1a';
+
+    // Body
+    ctx.beginPath();
+    ctx.ellipse(ox + 50, oy + 36, 18, 11, -0.15, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Near wing (left, toward performer)
+    ctx.beginPath();
+    ctx.moveTo(ox + 34, oy + 30);
+    ctx.lineTo(ox + 5,  oy + 12);
+    ctx.lineTo(ox + 28, oy + 38);
+    ctx.closePath();
+    ctx.fill();
+
+    // Far wing (right)
+    ctx.beginPath();
+    ctx.moveTo(ox + 64, oy + 28);
+    ctx.lineTo(ox + 88, oy + 14);
+    ctx.lineTo(ox + 72, oy + 38);
+    ctx.closePath();
+    ctx.fill();
+
+    // Head
+    ctx.beginPath();
+    ctx.arc(ox + 24, oy + 33, 10, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Gold hat (Kerala touch on the procedural fallback)
+    ctx.fillStyle = '#F1C40F';
+    ctx.beginPath();
+    ctx.moveTo(ox + 18, oy + 24);
+    ctx.lineTo(ox + 24, oy + 14);
+    ctx.lineTo(ox + 30, oy + 24);
+    ctx.closePath();
+    ctx.fill();
+
+    // Beak
+    ctx.fillStyle = '#8B8000';
+    ctx.beginPath();
+    ctx.moveTo(ox + 14, oy + 33);
+    ctx.lineTo(ox + 2,  oy + 29);
+    ctx.lineTo(ox + 14, oy + 38);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  // ── Procedural fallback: coconut tree (kept for fallen-tree fallback) ────────
+
+  _drawCoconutTree(ctx, ox, oy) {
+    const tcx = ox + 16;
+
     ctx.strokeStyle = '#7D5A2C';
     ctx.lineWidth   = 9;
     ctx.lineCap     = 'round';
     ctx.beginPath();
-    ctx.moveTo(tcx + 1, oy + 60);                           // base (= GROUND_Y)
-    ctx.quadraticCurveTo(tcx + 5, oy + 38, tcx - 2, oy + 22); // slight lean
+    ctx.moveTo(tcx + 1, oy + 60);
+    ctx.quadraticCurveTo(tcx + 5, oy + 38, tcx - 2, oy + 22);
     ctx.stroke();
 
-    // Lighter highlight stripe on trunk
     ctx.strokeStyle = '#A07840';
     ctx.lineWidth   = 3;
     ctx.beginPath();
@@ -123,72 +251,36 @@ export class Renderer {
     ctx.quadraticCurveTo(tcx + 2, oy + 38, tcx - 4, oy + 22);
     ctx.stroke();
 
-    // ── Palm fronds ───────────────────────────────────────────────────────────
-    // Five quadratic-bezier strokes radiating from the trunk crown
-    const fx = tcx - 2; // frond base x
-    const fy = oy + 22; // frond base y
+    const fx = tcx - 2;
+    const fy = oy + 22;
 
     ctx.strokeStyle = '#388E3C';
     ctx.lineWidth   = 2.5;
     ctx.lineCap     = 'round';
 
-    // Far-left droop
-    ctx.beginPath();
-    ctx.moveTo(fx, fy);
-    ctx.quadraticCurveTo(ox,      oy + 10, ox,      oy + 24);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.quadraticCurveTo(ox,      oy + 10, ox,      oy + 24); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.quadraticCurveTo(ox + 5,  oy + 5,  ox + 7,  oy + 16); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.quadraticCurveTo(fx - 2,  oy + 6,  fx + 2,  oy);      ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.quadraticCurveTo(ox + 24, oy + 6,  ox + 26, oy + 16); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(fx, fy); ctx.quadraticCurveTo(ox + 28, oy + 12, ox + 32, oy + 24); ctx.stroke();
 
-    // Mid-left
-    ctx.beginPath();
-    ctx.moveTo(fx, fy);
-    ctx.quadraticCurveTo(ox + 5,  oy + 5,  ox + 7,  oy + 16);
-    ctx.stroke();
-
-    // Upward centre frond
-    ctx.beginPath();
-    ctx.moveTo(fx, fy);
-    ctx.quadraticCurveTo(fx - 2,  oy + 6,  fx + 2,  oy);
-    ctx.stroke();
-
-    // Mid-right
-    ctx.beginPath();
-    ctx.moveTo(fx, fy);
-    ctx.quadraticCurveTo(ox + 24, oy + 6,  ox + 26, oy + 16);
-    ctx.stroke();
-
-    // Far-right droop
-    ctx.beginPath();
-    ctx.moveTo(fx, fy);
-    ctx.quadraticCurveTo(ox + 28, oy + 12, ox + 32, oy + 24);
-    ctx.stroke();
-
-    // ── Coconuts ──────────────────────────────────────────────────────────────
-    // Two dark-brown circles nestled at the frond base
     ctx.fillStyle = '#4E2A04';
-    ctx.beginPath();
-    ctx.arc(fx - 3, fy + 6, 4,   0, Math.PI * 2);
-    ctx.fill();
-    ctx.beginPath();
-    ctx.arc(fx + 4, fy + 5, 3.5, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(fx - 3, fy + 6, 4,   0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(fx + 4, fy + 5, 3.5, 0, Math.PI * 2); ctx.fill();
   }
 
-  // Procedural festival elephant (visual bounding box: 60 × 100 logical pixels).
-  // Elephant faces left (toward the performer). Hitbox covers the upper body
-  // and caparison (oy+5 to oy+68); legs below oy+68 are rendered but collision-free.
+  // ── Procedural fallback: festival elephant ──────────────────────────────────
+
   _drawFestivalElephant(ctx, ox, oy) {
-    // ── Rear legs ─────────────────────────────────────────────────────────────
     ctx.fillStyle = '#4A4A4A';
     ctx.fillRect(ox + 38, oy + 74, 11, 24);
     ctx.fillRect(ox + 51, oy + 75, 10, 23);
 
-    // ── Body ──────────────────────────────────────────────────────────────────
     ctx.fillStyle = '#6E6E6E';
     ctx.beginPath();
     ctx.ellipse(ox + 36, oy + 58, 22, 25, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    // ── Tail ──────────────────────────────────────────────────────────────────
     ctx.strokeStyle = '#4A4A4A';
     ctx.lineWidth   = 3;
     ctx.lineCap     = 'round';
@@ -197,24 +289,20 @@ export class Renderer {
     ctx.quadraticCurveTo(ox + 63, oy + 68, ox + 58, oy + 78);
     ctx.stroke();
 
-    // ── Front legs ────────────────────────────────────────────────────────────
     ctx.fillStyle = '#4A4A4A';
     ctx.fillRect(ox + 7,  oy + 73, 11, 25);
     ctx.fillRect(ox + 21, oy + 74, 10, 24);
 
-    // ── Ear ───────────────────────────────────────────────────────────────────
     ctx.fillStyle = '#7E7E7E';
     ctx.beginPath();
     ctx.ellipse(ox + 9, oy + 52, 9, 15, -0.25, 0, Math.PI * 2);
     ctx.fill();
 
-    // ── Head ──────────────────────────────────────────────────────────────────
     ctx.fillStyle = '#6E6E6E';
     ctx.beginPath();
     ctx.arc(ox + 18, oy + 51, 16, 0, Math.PI * 2);
     ctx.fill();
 
-    // ── Trunk ─────────────────────────────────────────────────────────────────
     ctx.strokeStyle = '#4A4A4A';
     ctx.lineWidth   = 7;
     ctx.lineCap     = 'round';
@@ -223,42 +311,33 @@ export class Renderer {
     ctx.quadraticCurveTo(ox + 1, oy + 74, ox + 8, oy + 85);
     ctx.stroke();
 
-    // ── Caparison (red festive cloth draped over the back) ────────────────────
     ctx.fillStyle = '#C0392B';
     ctx.beginPath();
-    ctx.moveTo(ox + 20, oy + 40);   // front-top
-    ctx.lineTo(ox + 58, oy + 36);   // back-top
-    ctx.lineTo(ox + 58, oy + 66);   // back-bottom
-    ctx.lineTo(ox + 20, oy + 70);   // front-bottom
+    ctx.moveTo(ox + 20, oy + 40);
+    ctx.lineTo(ox + 58, oy + 36);
+    ctx.lineTo(ox + 58, oy + 66);
+    ctx.lineTo(ox + 20, oy + 70);
     ctx.closePath();
     ctx.fill();
 
-    // Gold border trim
     ctx.strokeStyle = '#F1C40F';
     ctx.lineWidth   = 2;
     ctx.stroke();
 
-    // Central caparison ornament
     ctx.fillStyle = '#F1C40F';
-    ctx.beginPath();
-    ctx.arc(ox + 39, oy + 53, 5, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(ox + 39, oy + 53, 5,   0, Math.PI * 2); ctx.fill();
     ctx.fillStyle = '#C0392B';
-    ctx.beginPath();
-    ctx.arc(ox + 39, oy + 53, 2.5, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(ox + 39, oy + 53, 2.5, 0, Math.PI * 2); ctx.fill();
 
-    // ── Nettipattam (gold head ornament — the tallest part of the obstacle) ───
-    // This fan extends above the head up to ~oy+12, well within the hitbox zone.
     ctx.fillStyle = '#F1C40F';
     ctx.beginPath();
-    ctx.moveTo(ox + 10, oy + 37);   // left base
-    ctx.lineTo(ox + 5,  oy + 20);   // outer-left spike
-    ctx.lineTo(ox + 13, oy + 24);   // inner-left
-    ctx.lineTo(ox + 18, oy + 12);   // top-centre spike (highest point)
-    ctx.lineTo(ox + 23, oy + 24);   // inner-right
-    ctx.lineTo(ox + 31, oy + 20);   // outer-right spike
-    ctx.lineTo(ox + 26, oy + 37);   // right base
+    ctx.moveTo(ox + 10, oy + 37);
+    ctx.lineTo(ox + 5,  oy + 20);
+    ctx.lineTo(ox + 13, oy + 24);
+    ctx.lineTo(ox + 18, oy + 12);
+    ctx.lineTo(ox + 23, oy + 24);
+    ctx.lineTo(ox + 31, oy + 20);
+    ctx.lineTo(ox + 26, oy + 37);
     ctx.closePath();
     ctx.fill();
 
@@ -266,25 +345,16 @@ export class Renderer {
     ctx.lineWidth   = 0.8;
     ctx.stroke();
 
-    // Forehead base band
     ctx.fillStyle = '#F1C40F';
     ctx.fillRect(ox + 9, oy + 35, 18, 5);
 
-    // Crown jewel
     ctx.fillStyle = '#E74C3C';
-    ctx.beginPath();
-    ctx.arc(ox + 18, oy + 20, 3, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(ox + 18, oy + 20, 3, 0, Math.PI * 2); ctx.fill();
   }
 
-  // Upright silhouette shared by RUNNING and JUMPING.
-  // `jumping` nudges the arms upward for a subtle mid-air cue.
-  // Decorative shapes (headdress, skirt hem) extend just beyond the hitbox
-  // boundaries — they are visual only and do not affect collision.
+  // ── Procedural performer: standing / running / jumping ──────────────────────
+
   _drawStanding(ctx, top, cx, bot, jumping) {
-    // ── Costume skirt ─────────────────────────────────────────────────────────
-    // Trapezoid: narrow at waist (y+32), wide at hem (y+60 = bot).
-    // Hem overhangs the hitbox by ±4 px — purely decorative.
     ctx.fillStyle = '#E67E22';
     ctx.beginPath();
     ctx.moveTo(cx - 8,  top + 32);
@@ -294,11 +364,9 @@ export class Renderer {
     ctx.closePath();
     ctx.fill();
 
-    // Gold hem band
     ctx.fillStyle = '#D4AC0D';
     ctx.fillRect(cx - 24, bot - 6, 48, 6);
 
-    // Vertical pleat lines
     ctx.strokeStyle = '#C0540A';
     ctx.lineWidth   = 1;
     for (let i = -1; i <= 1; i++) {
@@ -308,15 +376,12 @@ export class Renderer {
       ctx.stroke();
     }
 
-    // ── Torso ─────────────────────────────────────────────────────────────────
     ctx.fillStyle = '#C0392B';
     ctx.fillRect(cx - 6, top + 18, 12, 14);
 
-    // Gold sash across torso
     ctx.fillStyle = '#F1C40F';
     ctx.fillRect(cx - 6, top + 23, 12, 3);
 
-    // ── Arms ──────────────────────────────────────────────────────────────────
     const armRootY = top + 23;
     const armTipY  = jumping ? armRootY - 5 : armRootY + 3;
 
@@ -324,29 +389,14 @@ export class Renderer {
     ctx.lineWidth   = 3;
     ctx.lineCap     = 'round';
 
-    ctx.beginPath();
-    ctx.moveTo(cx - 6, armRootY);
-    ctx.lineTo(cx - 17, armTipY);
-    ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx - 6, armRootY); ctx.lineTo(cx - 17, armTipY); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx + 6, armRootY); ctx.lineTo(cx + 17, armTipY); ctx.stroke();
 
-    ctx.beginPath();
-    ctx.moveTo(cx + 6, armRootY);
-    ctx.lineTo(cx + 17, armTipY);
-    ctx.stroke();
-
-    // ── Head ──────────────────────────────────────────────────────────────────
     const headCY = top + 10;
+    ctx.fillStyle = '#27AE60';
+    ctx.beginPath(); ctx.arc(cx, headCY, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#1E8449'; ctx.lineWidth = 1; ctx.stroke();
 
-    ctx.fillStyle = '#27AE60';        // traditional Kathakali green make-up
-    ctx.beginPath();
-    ctx.arc(cx, headCY, 8, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.strokeStyle = '#1E8449';
-    ctx.lineWidth   = 1;
-    ctx.stroke();
-
-    // Wide stylised eyes
     ctx.fillStyle = '#ECF0F1';
     ctx.fillRect(cx - 6, headCY - 2, 4, 3);
     ctx.fillRect(cx + 2, headCY - 2, 4, 3);
@@ -357,57 +407,23 @@ export class Renderer {
     ctx.arc(cx + 4, headCY - 1, 1.5, 0, Math.PI * 2);
     ctx.fill();
 
-    // ── Headdress (Kireedam) — extends above the hitbox ───────────────────────
-    // Purely visual; does not widen the collision area.
     const crownBase = top - 1;
+    ctx.fillStyle   = '#F1C40F';
 
-    ctx.fillStyle = '#F1C40F';
+    ctx.beginPath(); ctx.moveTo(cx - 4, crownBase); ctx.lineTo(cx, crownBase - 20); ctx.lineTo(cx + 4, crownBase); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx - 2, crownBase); ctx.lineTo(cx - 14, crownBase - 12); ctx.lineTo(cx - 7, crownBase - 7); ctx.lineTo(cx - 1, crownBase); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.moveTo(cx + 2, crownBase); ctx.lineTo(cx + 14, crownBase - 12); ctx.lineTo(cx + 7, crownBase - 7); ctx.lineTo(cx + 1, crownBase); ctx.closePath(); ctx.fill();
 
-    // Central spire
-    ctx.beginPath();
-    ctx.moveTo(cx - 4, crownBase);
-    ctx.lineTo(cx,     crownBase - 20);
-    ctx.lineTo(cx + 4, crownBase);
-    ctx.closePath();
-    ctx.fill();
-
-    // Left wing
-    ctx.beginPath();
-    ctx.moveTo(cx - 2,  crownBase);
-    ctx.lineTo(cx - 14, crownBase - 12);
-    ctx.lineTo(cx - 7,  crownBase - 7);
-    ctx.lineTo(cx - 1,  crownBase);
-    ctx.closePath();
-    ctx.fill();
-
-    // Right wing
-    ctx.beginPath();
-    ctx.moveTo(cx + 2,  crownBase);
-    ctx.lineTo(cx + 14, crownBase - 12);
-    ctx.lineTo(cx + 7,  crownBase - 7);
-    ctx.lineTo(cx + 1,  crownBase);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.strokeStyle = '#D4AC0D';
-    ctx.lineWidth   = 0.8;
-    ctx.stroke();
-
-    // Crown jewel
-    ctx.fillStyle = '#E74C3C';
-    ctx.beginPath();
-    ctx.arc(cx, crownBase - 10, 2.5, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.strokeStyle = '#D4AC0D'; ctx.lineWidth = 0.8; ctx.stroke();
+    ctx.fillStyle   = '#E74C3C';
+    ctx.beginPath(); ctx.arc(cx, crownBase - 10, 2.5, 0, Math.PI * 2); ctx.fill();
   }
 
-  // Crouching silhouette for DUCKING.
-  // Hitbox is 40 × 30; bottom still sits on GROUND_Y.
-  // The wide-spread skirt is the most visually distinct Kathakali element
-  // and reads clearly even at this compressed height.
-  _drawDucking(ctx, cx, bot) {
-    const top = bot - 30;   // hb.y when ducking
+  // ── Procedural performer: ducking ────────────────────────────────────────────
 
-    // Skirt spreads wider when crouching
+  _drawDucking(ctx, cx, bot) {
+    const top = bot - 30;
+
     ctx.fillStyle = '#E67E22';
     ctx.beginPath();
     ctx.moveTo(cx - 5,  top + 8);
@@ -417,11 +433,9 @@ export class Renderer {
     ctx.closePath();
     ctx.fill();
 
-    // Gold hem band
     ctx.fillStyle = '#D4AC0D';
     ctx.fillRect(cx - 32, bot - 6, 64, 6);
 
-    // Pleat lines
     ctx.strokeStyle = '#C0540A';
     ctx.lineWidth   = 1;
     for (let i = -1; i <= 1; i++) {
@@ -431,55 +445,46 @@ export class Renderer {
       ctx.stroke();
     }
 
-    // Compressed torso
     ctx.fillStyle = '#C0392B';
     ctx.fillRect(cx - 5, top + 3, 10, 7);
 
-    // Head pushed forward and low
     const headCX = cx + 5;
     const headCY = top + 5;
 
     ctx.fillStyle = '#27AE60';
-    ctx.beginPath();
-    ctx.arc(headCX, headCY, 7, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(headCX, headCY, 7, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#1E8449'; ctx.lineWidth = 1; ctx.stroke();
 
-    ctx.strokeStyle = '#1E8449';
-    ctx.lineWidth   = 1;
-    ctx.stroke();
-
-    // Single visible eye (face turned forward)
     ctx.fillStyle = '#ECF0F1';
     ctx.fillRect(headCX + 1, headCY - 2, 4, 3);
 
     ctx.fillStyle = '#1A252F';
-    ctx.beginPath();
-    ctx.arc(headCX + 3, headCY - 1, 1.5, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.beginPath(); ctx.arc(headCX + 3, headCY - 1, 1.5, 0, Math.PI * 2); ctx.fill();
   }
 
   // ── UI overlays ─────────────────────────────────────────────────────────────
 
-  // Live score display shown only during PLAYING.
-  // Layout mirrors classic endless runners: HI on the left, score on the right.
   _drawHUD(ctx, score, highScore) {
     ctx.save();
-
     ctx.font         = 'bold 16px monospace';
     ctx.textBaseline = 'top';
-    ctx.fillStyle    = '#2c3e50';
 
-    // Top-left: test mode label or high score
+    // Legible on any background: white text with dark shadow
+    ctx.shadowColor   = 'rgba(0,0,0,0.7)';
+    ctx.shadowBlur    = 4;
+    ctx.shadowOffsetX = 1;
+    ctx.shadowOffsetY = 1;
+    ctx.fillStyle     = '#ffffff';
+
     ctx.textAlign = 'left';
     if (ELEPHANT_TEST_MODE) {
       ctx.fillStyle = '#E74C3C';
       ctx.fillText('ELEPHANT TEST MODE', 16, 12);
-      ctx.fillStyle = '#2c3e50';
+      ctx.fillStyle = '#ffffff';
     } else {
       ctx.fillText(`HI  ${fmt(highScore)}`, 16, 12);
     }
 
-    // Current score — top-right
     ctx.textAlign = 'right';
     ctx.fillText(fmt(score), CANVAS_WIDTH - 16, 12);
 
@@ -499,7 +504,6 @@ export class Renderer {
     ctx.font      = 'bold 30px monospace';
     ctx.fillText('KATHAKALI RUN', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 36);
 
-    // Show personal best if one exists
     if (highScore > 0) {
       ctx.font      = '13px monospace';
       ctx.fillStyle = '#F1C40F';
@@ -531,11 +535,9 @@ export class Renderer {
     ctx.font      = 'bold 30px monospace';
     ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, mid - 34);
 
-    // Score row
     ctx.font = '15px monospace';
     ctx.fillText(`SCORE  ${fmt(score)}`, CANVAS_WIDTH / 2, mid - 4);
 
-    // High score row — gold if this run set a new best
     const isNewBest = Math.floor(score) >= highScore && highScore > 0;
     ctx.fillStyle = isNewBest ? '#F1C40F' : '#ccc';
     ctx.fillText(
@@ -552,7 +554,6 @@ export class Renderer {
   }
 }
 
-// Zero-pad score to 5 digits for a consistent display width.
 function fmt(n) {
   return String(Math.floor(n)).padStart(5, '0');
 }

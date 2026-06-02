@@ -1,20 +1,18 @@
 import { CANVAS_WIDTH, CANVAS_HEIGHT } from './config.js';
-import { GameLoop }       from './core/GameLoop.js';
+import { GameLoop }        from './core/GameLoop.js';
 import { GameState, STATE } from './core/GameState.js';
-import { Renderer }       from './core/Renderer.js';
-import { checkCollision } from './core/CollisionSystem.js';
-import { Performer }      from './entities/Performer.js';
+import { Renderer }        from './core/Renderer.js';
+import { checkCollision }  from './core/CollisionSystem.js';
+import { loadAssets }      from './core/AssetLoader.js';
+import { Performer }       from './entities/Performer.js';
 import { ObstacleManager } from './entities/ObstacleManager.js';
-import { ScoreManager }   from './entities/ScoreManager.js';
+import { ScoreManager }    from './entities/ScoreManager.js';
 import { InputBus, ACTION } from './input/InputBus.js';
-import { KeyboardInput }  from './input/KeyboardInput.js';
-import { GestureInput }   from './input/GestureInput.js';
+import { KeyboardInput }   from './input/KeyboardInput.js';
+import { GestureInput }    from './input/GestureInput.js';
 import { obstacles as obstacleTypes } from '../data/obstacles.js';
 
 // ── Canvas setup ──────────────────────────────────────────────────────────────
-// Physical pixel size = logical size × devicePixelRatio, so sprites are sharp
-// on Retina / HiDPI displays. All draw calls use logical coordinates;
-// the context transform handles the scaling transparently.
 const canvas = document.getElementById('game-canvas');
 const ctx    = canvas.getContext('2d');
 const dpr    = window.devicePixelRatio || 1;
@@ -25,10 +23,9 @@ canvas.style.width  = `${CANVAS_WIDTH}px`;
 canvas.style.height = `${CANVAS_HEIGHT}px`;
 ctx.scale(dpr, dpr);
 
-// ── Core objects ──────────────────────────────────────────────────────────────
+// ── Core objects (synchronous — created before asset load) ────────────────────
 const gameState       = new GameState();
 const performer       = new Performer();
-const renderer        = new Renderer(ctx);
 const obstacleManager = new ObstacleManager(obstacleTypes);
 const scoreManager    = new ScoreManager();
 const inputBus        = new InputBus();
@@ -43,33 +40,43 @@ inputBus.on(ACTION.START, () => {
     performer.reset();
     obstacleManager.reset();
     scoreManager.reset();
-    gameState.restart();   // also resets gameState.speed to INITIAL_SPEED
+    gameState.restart();
   }
 });
 
-inputBus.on(ACTION.JUMP,       () => { console.log('[InputBus] JUMP → performer.jump()'); performer.jump(); });
-inputBus.on(ACTION.DUCK_START, () => { console.log('[InputBus] DUCK_START → performer.duckStart()'); performer.duckStart(); });
-inputBus.on(ACTION.DUCK_END,   () => { console.log('[InputBus] DUCK_END → performer.duckEnd()'); performer.duckEnd(); });
+inputBus.on(ACTION.JUMP,       () => performer.jump());
+inputBus.on(ACTION.DUCK_START, () => performer.duckStart());
+inputBus.on(ACTION.DUCK_END,   () => performer.duckEnd());
 
 keyboard.attach();
 
+// ── Loading screen ────────────────────────────────────────────────────────────
+// Show something on the canvas while images are fetched (top-level await below
+// pauses the rest of module execution until all assets have loaded or failed).
+ctx.fillStyle    = '#dff0f8';
+ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+ctx.fillStyle    = '#2c3e50';
+ctx.font         = '16px monospace';
+ctx.textAlign    = 'center';
+ctx.textBaseline = 'middle';
+ctx.fillText('Loading…', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+
+// ── Asset loading ─────────────────────────────────────────────────────────────
+const assets   = await loadAssets();
+const renderer = new Renderer(ctx, assets);
+
 // ── Game loop ─────────────────────────────────────────────────────────────────
-// The loop always runs. All update logic is gated on PLAYING state.
 const loop = new GameLoop((delta) => {
   if (gameState.state === STATE.PLAYING) {
-    // Score + tier advancement
     const tieredUp = scoreManager.update(delta);
     if (tieredUp) {
-      // Sync world speed to the newly active tier (pixels per second)
       gameState.speed = scoreManager.currentTier.speed;
     }
 
-    // Entity updates — pass current tier's spawn gaps to ObstacleManager
     const tier = scoreManager.currentTier;
     performer.update(delta);
     obstacleManager.update(delta, gameState.speed, tier.minSpawnGap, tier.maxSpawnGap);
 
-    // Collision — save high score then trigger game over
     if (checkCollision(performer, obstacleManager.obstacles)) {
       scoreManager.saveHighScore();
       gameState.triggerGameOver();
@@ -82,14 +89,14 @@ const loop = new GameLoop((delta) => {
     obstacleManager.obstacles,
     scoreManager.score,
     scoreManager.highScore,
+    delta,
+    gameState.speed,
   );
 });
 
 loop.start();
 
 // ── Webcam toggle ─────────────────────────────────────────────────────────────
-// GestureModule is loaded via dynamic import() on the first click so it never
-// appears in the initial page bundle — keeping startup unaffected.
 const webcamBtn      = document.getElementById('webcam-toggle');
 const gestureOverlay = document.getElementById('gesture-overlay');
 let   gestureModule  = null;
@@ -97,10 +104,9 @@ let   webcamEnabled  = false;
 
 webcamBtn.addEventListener('click', async () => {
   if (!webcamEnabled) {
-    webcamBtn.disabled = true;
+    webcamBtn.disabled    = true;
     webcamBtn.textContent = 'Starting…';
 
-    // Lazy-load on first use
     if (!gestureModule) {
       const { GestureModule } = await import('./gesture/GestureModule.js');
       gestureModule = new GestureModule(gestureOverlay, gestureInput);
@@ -109,19 +115,18 @@ webcamBtn.addEventListener('click', async () => {
     const ok = await gestureModule.enable();
 
     if (ok) {
-      webcamEnabled = true;
+      webcamEnabled         = true;
       webcamBtn.textContent = 'Disable Webcam';
       webcamBtn.classList.add('active');
     } else {
       webcamBtn.textContent = 'Webcam Unavailable';
-      // Leave disabled — access was denied or the API is not present
       return;
     }
     webcamBtn.disabled = false;
 
   } else {
     gestureModule.disable();
-    webcamEnabled = false;
+    webcamEnabled         = false;
     webcamBtn.textContent = 'Enable Webcam';
     webcamBtn.classList.remove('active');
   }
