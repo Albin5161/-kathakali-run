@@ -22,7 +22,7 @@ export class HandDetector {
 
       this._worker = new Worker(
         new URL('./HandDetectorWorker.js', import.meta.url),
-        { type: 'module' },
+        { type: 'classic' },
       );
 
       console.log('[HandDetector] Worker created, sending load…');
@@ -77,7 +77,17 @@ export class HandDetector {
     if (!this.ready)                                          return;
     if (this._busy)                                           return;
     if (this._frameCount % INFER_EVERY_N_FRAMES !== 0)        return;
-    if (videoEl.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) return;
+    if (videoEl.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      // DEBUG: log once every 120 frames so the console isn't flooded
+      if (this._frameCount % 120 === 0) {
+        console.warn(
+          `[HandDetector] DEBUG readyState=${videoEl.readyState} (need ≥2) — frames will not be sent until video has data`,
+          `videoWidth=${videoEl.videoWidth} videoHeight=${videoEl.videoHeight}`,
+          `paused=${videoEl.paused} ended=${videoEl.ended}`,
+        );
+      }
+      return;
+    }
 
     this._busy = true;
     this._framesSent++;

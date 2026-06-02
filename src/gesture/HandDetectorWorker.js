@@ -1,10 +1,19 @@
-// Web Worker — MediaPipe inference runs here, never on the main thread.
+// Web Worker (classic, not module) — MediaPipe inference runs here, never on the main thread.
 //
-// FIX: imports are now dynamic (inside the message handler), not static.
-// A static top-level import would execute at parse time before self.onmessage
-// is registered. If the CDN fetch failed the Worker died silently, the main
-// thread received a generic onerror, and the detector was set to null with no
-// visible indication to the user.
+// Why classic Worker, not { type: 'module' }:
+//   FilesetResolver.forVisionTasks() internally fetches vision_wasm_internal.js, an
+//   emscripten-generated WASM loader that calls importScripts() to load the .wasm binary.
+//   importScripts() throws TypeError in a module Worker ("Module scripts don't support
+//   importScripts()"). MediaPipe catches that TypeError internally so forVisionTasks()
+//   appears to succeed, but the module factory is never set — causing
+//   HandLandmarker.createFromOptions() to throw "ModuleFactory not set".
+//   In a classic Worker importScripts() is allowed, so the WASM loader runs normally.
+//
+// Why dynamic import() instead of importScripts() for the CDN bundle:
+//   importScripts() executes synchronously at the top level, which makes it impossible
+//   to wrap in a Promise or send a meaningful error back to the main thread.
+//   Dynamic import() inside the 'load' handler gives us try/catch and the ability to
+//   postMessage({type:'error'}) when the CDN fetch or model load fails.
 //
 // Protocol:
 //   main → worker  { type: 'load' }
@@ -25,15 +34,6 @@ self.onmessage = async ({ data }) => {
     try {
       console.log('[Worker] Importing @mediapipe/tasks-vision from CDN…');
 
-      // @0.10.35 is required for module Worker compatibility.
-      //
-      // @0.10.14 and earlier call importScripts() without a try/catch inside their
-      // WASM loader. In a module Worker, importScripts() throws TypeError
-      // ("Module scripts don't support importScripts()") and the whole load fails.
-      //
-      // @0.10.35 wraps that call in try/catch and falls back to dynamic import()
-      // when a TypeError is caught — which is exactly the module Worker case.
-      // This matches what the official mediapipe-samples-web repo pins to (^0.10.35).
       const { HandLandmarker, FilesetResolver } = await import(
         'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/vision_bundle.mjs'
       );
@@ -77,6 +77,21 @@ self.onmessage = async ({ data }) => {
 
     try {
       const raw = detector.detect(data.frame);
+
+      // DEBUG: log the raw result once every 60 detections so we can verify
+      // the result shape after the 0.10.35 upgrade without flooding the log.
+      if (!self._dbgCount) self._dbgCount = 0;
+      if (++self._dbgCount <= 3 || self._dbgCount % 60 === 0) {
+        console.log(
+          `[Worker] DEBUG raw result #${self._dbgCount}:`,
+          `type=${typeof raw}`,
+          `null=${raw === null}`,
+          `landmarks type=${typeof raw?.landmarks}`,
+          `landmarks length=${raw?.landmarks?.length ?? 'n/a'}`,
+          `handedness length=${raw?.handedness?.length ?? 'n/a'}`,
+          raw,
+        );
+      }
 
       // Serialize to plain arrays before postMessage.
       // HandLandmarkerResult may contain class instances whose prototype chain

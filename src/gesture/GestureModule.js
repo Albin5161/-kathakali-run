@@ -86,6 +86,21 @@ export class GestureModule {
       console.log('[GestureModule] HandDetector.load() resolved — model ready ✓');
       this._status = 'detector ready';
 
+      // DEBUG: dump pipeline state 5 s after the model is ready so we can
+      // see whether frames are actually being sent and results received.
+      setTimeout(() => {
+        const d = this._detector;
+        console.log(
+          '[GestureModule] DEBUG 5-second pipeline snapshot:',
+          `ready=${d?.ready}`,
+          `framesSent=${d?._framesSent}`,
+          `resultsRecv=${d?._resultsRecv}`,
+          `busy=${d?._busy}`,
+          `lastError=${d?.lastError}`,
+          `result.landmarks.length=${d?.result?.landmarks?.length ?? 'none'}`,
+        );
+      }, 5000);
+
     } catch (err) {
       console.error('[GestureModule] HandDetector failed to load:', err);
       this._status = `error: ${err.message ?? err}`;
