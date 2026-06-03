@@ -44,7 +44,18 @@ export class Performer {
 
   // Initiates a jump. Ignored if already airborne (no double-jump).
   jump() {
-    if (this.state === PERFORMER_STATE.JUMPING) return;
+    console.log('[Performer] jump() called');
+    if (this.state === PERFORMER_STATE.JUMPING) {
+      console.log('[Performer] Jump rejected: already airborne');
+      return;
+    }
+
+    // Snap to standing height before applying jump velocity.
+    // Jumping from DUCKING state leaves y=220 (duck position), which already
+    // satisfies the landing check (y >= 190), causing instant landing on the
+    // first physics frame. Resetting y here guarantees every jump starts at 190.
+    this.y = GROUND_Y - PERFORMER_STAND_HEIGHT;
+
     this.state     = PERFORMER_STATE.JUMPING;
     this.velocityY = JUMP_VELOCITY;
 
@@ -54,11 +65,8 @@ export class Performer {
     this._apexTime      = 0;
     this._apexReached   = false;
 
-    console.log(
-      `[Jump] START  t=${this._jumpStartTime.toFixed(2)}ms` +
-      `  velocityY=${JUMP_VELOCITY}px/s  gravity=${GRAVITY}px/s²` +
-      `  startY=${this.y.toFixed(2)}`
-    );
+    console.log('[Performer] Jump accepted');
+    console.log('[Jump] START', { startY: this.y, state: this.state });
   }
 
   // Switches to the ducking stance. Ignored while airborne.

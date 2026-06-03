@@ -21,21 +21,21 @@ export class HandDetector {
   // Creates the Worker, sends 'load', resolves when ready.
   load() {
     return new Promise((resolve, reject) => {
-      console.log('[HandDetector] Creating Worker…');
+      if (window.DEBUG_VERBOSE) console.log('[HandDetector] Creating Worker…');
 
       this._worker = new Worker(
         new URL('./HandDetectorWorker.js', import.meta.url),
         { type: 'classic' },
       );
 
-      console.log('[HandDetector] Worker created, sending load…');
+      if (window.DEBUG_VERBOSE) console.log('[HandDetector] Worker created, sending load…');
       this._worker.postMessage({ type: 'load' });
 
       this._worker.onmessage = ({ data }) => {
-        console.log('[HandDetector] Message from Worker:', data.type, data);
+        if (window.DEBUG_VERBOSE) console.log('[HandDetector] Message from Worker:', data.type, data);
 
         if (data.type === 'ready') {
-          console.log('[HandDetector] Worker ready ✓');
+          if (window.DEBUG_VERBOSE) console.log('[HandDetector] Worker ready ✓');
           this.ready = true;
           resolve();
 
@@ -49,12 +49,14 @@ export class HandDetector {
           this._resultsRecv++;
           this.result = { landmarks: data.landmarks, handedness: data.handedness };
 
-          const inferenceMs = (performance.now() - this._detectSentAt).toFixed(1);
-          console.log(
-            `[HandDetector] Result #${this._resultsRecv} — hands: ${data.landmarks.length}` +
-            (data.landmarks.length > 0 ? `  conf: ${(data.handedness?.[0]?.[0]?.score * 100 | 0)}%` : '') +
-            `  inference: ${inferenceMs}ms`,
-          );
+          if (window.DEBUG_VERBOSE) {
+            const inferenceMs = (performance.now() - this._detectSentAt).toFixed(1);
+            console.log(
+              `[HandDetector] Result #${this._resultsRecv} — hands: ${data.landmarks.length}` +
+              (data.landmarks.length > 0 ? `  conf: ${(data.handedness?.[0]?.[0]?.score * 100 | 0)}%` : '') +
+              `  inference: ${inferenceMs}ms`,
+            );
+          }
 
           // Fire immediately — gesture recognition and input update happen here,
           // not on the next rAF tick.
@@ -88,8 +90,7 @@ export class HandDetector {
     if (this._busy)                                           return;
     if (this._frameCount % INFER_EVERY_N_FRAMES !== 0)        return;
     if (videoEl.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
-      // DEBUG: log once every 120 frames so the console isn't flooded
-      if (this._frameCount % 120 === 0) {
+      if (window.DEBUG_VERBOSE && this._frameCount % 120 === 0) {
         console.warn(
           `[HandDetector] DEBUG readyState=${videoEl.readyState} (need ≥2) — frames will not be sent until video has data`,
           `videoWidth=${videoEl.videoWidth} videoHeight=${videoEl.videoHeight}`,
@@ -102,7 +103,7 @@ export class HandDetector {
     this._busy         = true;
     this._framesSent++;
     this._detectSentAt = performance.now();
-    console.log(`[HandDetector] Sending frame #${this._framesSent} to Worker`);
+    if (window.DEBUG_VERBOSE) console.log(`[HandDetector] Sending frame #${this._framesSent} to Worker`);
 
     createImageBitmap(videoEl)
       .then(bmp => {
@@ -115,7 +116,7 @@ export class HandDetector {
   }
 
   terminate() {
-    console.log('[HandDetector] Terminating Worker');
+    if (window.DEBUG_VERBOSE) console.log('[HandDetector] Terminating Worker');
     this._worker?.terminate();
     this._worker = null;
     this.ready   = false;

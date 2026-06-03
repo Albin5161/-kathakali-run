@@ -21,30 +21,34 @@
 //
 //   main → worker  { type: 'detect', frame: ImageBitmap }   [frame is transferred]
 //   worker → main  { type: 'result', landmarks, handedness }  (plain arrays, not class instances)
+//
+// Verbose logs are gated behind self.DEBUG_VERBOSE.
+// Set window.DEBUG_VERBOSE = true in the browser console to enable them.
+// (Workers use `self` instead of `window`.)
 
-console.log('[Worker] Script evaluated — awaiting messages');
+if (self.DEBUG_VERBOSE) console.log('[Worker] Script evaluated — awaiting messages');
 
 let detector = null;
 
 self.onmessage = async ({ data }) => {
-  console.log('[Worker] Message received:', data.type);
+  if (self.DEBUG_VERBOSE) console.log('[Worker] Message received:', data.type);
 
   // ── Load ────────────────────────────────────────────────────────────────────
   if (data.type === 'load') {
     try {
-      console.log('[Worker] Importing @mediapipe/tasks-vision from CDN…');
+      if (self.DEBUG_VERBOSE) console.log('[Worker] Importing @mediapipe/tasks-vision from CDN…');
 
       const { HandLandmarker, FilesetResolver } = await import(
         'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/vision_bundle.mjs'
       );
 
-      console.log('[Worker] CDN import succeeded. Fetching WASM + model…');
+      if (self.DEBUG_VERBOSE) console.log('[Worker] CDN import succeeded. Fetching WASM + model…');
 
       const vision = await FilesetResolver.forVisionTasks(
         'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.35/wasm',
       );
 
-      console.log('[Worker] WASM resolved. Creating HandLandmarker (CPU delegate)…');
+      if (self.DEBUG_VERBOSE) console.log('[Worker] WASM resolved. Creating HandLandmarker (CPU delegate)…');
 
       detector = await HandLandmarker.createFromOptions(vision, {
         baseOptions: {
@@ -57,7 +61,7 @@ self.onmessage = async ({ data }) => {
         runningMode: 'IMAGE', // each frame independent — no timestamp required
       });
 
-      console.log('[Worker] HandLandmarker ready ✓');
+      if (self.DEBUG_VERBOSE) console.log('[Worker] HandLandmarker ready ✓');
       self.postMessage({ type: 'ready' });
 
     } catch (err) {
@@ -70,7 +74,7 @@ self.onmessage = async ({ data }) => {
   // ── Detect ───────────────────────────────────────────────────────────────────
   if (data.type === 'detect') {
     if (!detector) {
-      console.warn('[Worker] detect called but detector not ready');
+      if (self.DEBUG_VERBOSE) console.warn('[Worker] detect called but detector not ready');
       data.frame.close();
       return;
     }
@@ -78,19 +82,19 @@ self.onmessage = async ({ data }) => {
     try {
       const raw = detector.detect(data.frame);
 
-      // DEBUG: log the raw result once every 60 detections so we can verify
-      // the result shape after the 0.10.35 upgrade without flooding the log.
-      if (!self._dbgCount) self._dbgCount = 0;
-      if (++self._dbgCount <= 3 || self._dbgCount % 60 === 0) {
-        console.log(
-          `[Worker] DEBUG raw result #${self._dbgCount}:`,
-          `type=${typeof raw}`,
-          `null=${raw === null}`,
-          `landmarks type=${typeof raw?.landmarks}`,
-          `landmarks length=${raw?.landmarks?.length ?? 'n/a'}`,
-          `handedness length=${raw?.handedness?.length ?? 'n/a'}`,
-          raw,
-        );
+      if (self.DEBUG_VERBOSE) {
+        if (!self._dbgCount) self._dbgCount = 0;
+        if (++self._dbgCount <= 3 || self._dbgCount % 60 === 0) {
+          console.log(
+            `[Worker] DEBUG raw result #${self._dbgCount}:`,
+            `type=${typeof raw}`,
+            `null=${raw === null}`,
+            `landmarks type=${typeof raw?.landmarks}`,
+            `landmarks length=${raw?.landmarks?.length ?? 'n/a'}`,
+            `handedness length=${raw?.handedness?.length ?? 'n/a'}`,
+            raw,
+          );
+        }
       }
 
       // Serialize to plain arrays before postMessage.
@@ -107,7 +111,7 @@ self.onmessage = async ({ data }) => {
         return cats.map(c => ({ score: c.score, categoryName: c.categoryName ?? '' }));
       }) ?? [];
 
-      console.log(`[Worker] Detection done — hands: ${landmarks.length}`);
+      if (self.DEBUG_VERBOSE) console.log(`[Worker] Detection done — hands: ${landmarks.length}`);
       self.postMessage({ type: 'result', landmarks, handedness });
 
     } catch (err) {
