@@ -1,4 +1,4 @@
-import { CANVAS_WIDTH, CANVAS_HEIGHT, GROUND_Y, DEBUG_HITBOXES, ELEPHANT_TEST_MODE } from '../config.js';
+import { CANVAS_WIDTH, CANVAS_HEIGHT, GROUND_Y, DEBUG_HITBOXES } from '../config.js';
 import { STATE }           from './GameState.js';
 import { PERFORMER_STATE } from '../entities/Performer.js';
 
@@ -47,7 +47,7 @@ export class Renderer {
 
   // Called every frame regardless of game state.
   // delta (seconds) and speed (px/s) are used only to advance the ground scroll.
-  draw(gameState, performer, obstacles, score, highScore, delta = 0, speed = 0) {
+  draw(gameState, performer, obstacles, delta = 0, speed = 0) {
     const ctx = this._ctx;
 
     // ── Advance ground scroll ─────────────────────────────────────────────────
@@ -107,14 +107,8 @@ export class Renderer {
     // ── Performer ─────────────────────────────────────────────────────────────
     this._drawPerformer(ctx, performer);
 
-    // ── UI overlays (always drawn on top; gated by state) ────────────────────
-    if (gameState.state === STATE.PLAYING) {
-      this._drawHUD(ctx, score, highScore);
-    } else if (gameState.state === STATE.IDLE) {
-      this._drawStartScreen(ctx, highScore);
-    } else if (gameState.state === STATE.GAME_OVER) {
-      this._drawGameOverScreen(ctx, score, highScore);
-    }
+    // Score, start and game-over screens are DOM elements over the canvas
+    // (the curtain and HUD in index.html), driven from main.js.
   }
 
   // ── Performer ───────────────────────────────────────────────────────────────
@@ -450,99 +444,4 @@ export class Renderer {
     ctx.fillStyle = '#1A252F';
     ctx.beginPath(); ctx.arc(headCX + 3, headCY - 1, 1.5, 0, Math.PI * 2); ctx.fill();
   }
-
-  // ── UI overlays ─────────────────────────────────────────────────────────────
-
-  _drawHUD(ctx, score, highScore) {
-    ctx.save();
-    ctx.font         = 'bold 16px monospace';
-    ctx.textBaseline = 'top';
-
-    // Legible on any background: white text with dark shadow
-    ctx.shadowColor   = 'rgba(0,0,0,0.7)';
-    ctx.shadowBlur    = 4;
-    ctx.shadowOffsetX = 1;
-    ctx.shadowOffsetY = 1;
-    ctx.fillStyle     = '#ffffff';
-
-    ctx.textAlign = 'left';
-    if (ELEPHANT_TEST_MODE) {
-      ctx.fillStyle = '#E74C3C';
-      ctx.fillText('ELEPHANT TEST MODE', 16, 12);
-      ctx.fillStyle = '#ffffff';
-    } else {
-      ctx.fillText(`HI  ${fmt(highScore)}`, 16, 12);
-    }
-
-    ctx.textAlign = 'right';
-    ctx.fillText(fmt(score), CANVAS_WIDTH - 16, 12);
-
-    ctx.restore();
-  }
-
-  _drawStartScreen(ctx, highScore) {
-    ctx.save();
-
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-
-    ctx.fillStyle = '#fff';
-    ctx.font      = 'bold 30px monospace';
-    ctx.fillText('KATHAKALI RUN', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 36);
-
-    if (highScore > 0) {
-      ctx.font      = '13px monospace';
-      ctx.fillStyle = '#F1C40F';
-      ctx.fillText(`BEST  ${fmt(highScore)}`, CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 - 10);
-    }
-
-    ctx.font      = '14px monospace';
-    ctx.fillStyle = '#fff';
-    ctx.fillText('Press Space or Enter to start', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 14);
-
-    ctx.fillStyle = '#ccc';
-    ctx.font      = '12px monospace';
-    ctx.fillText('↑ / Space — Jump     ↓ — Duck', CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2 + 36);
-
-    ctx.restore();
-  }
-
-  _drawGameOverScreen(ctx, score, highScore) {
-    ctx.save();
-
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-    const mid = CANVAS_HEIGHT / 2;
-
-    ctx.fillStyle = '#fff';
-    ctx.font      = 'bold 30px monospace';
-    ctx.fillText('GAME OVER', CANVAS_WIDTH / 2, mid - 34);
-
-    ctx.font = '15px monospace';
-    ctx.fillText(`SCORE  ${fmt(score)}`, CANVAS_WIDTH / 2, mid - 4);
-
-    const isNewBest = Math.floor(score) >= highScore && highScore > 0;
-    ctx.fillStyle = isNewBest ? '#F1C40F' : '#ccc';
-    ctx.fillText(
-      isNewBest ? `NEW BEST!  ${fmt(highScore)}` : `HI  ${fmt(highScore)}`,
-      CANVAS_WIDTH / 2,
-      mid + 20,
-    );
-
-    ctx.fillStyle = '#fff';
-    ctx.font      = '13px monospace';
-    ctx.fillText('Press Space or Enter to restart', CANVAS_WIDTH / 2, mid + 46);
-
-    ctx.restore();
-  }
-}
-
-function fmt(n) {
-  return String(Math.floor(n)).padStart(5, '0');
 }

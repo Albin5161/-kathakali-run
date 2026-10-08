@@ -20,6 +20,12 @@ export class GestureInput {
     this._lastNonNoneAt = 0;      // performance.now() when that gesture was last seen
   }
 
+  // Marks a gesture as already seen, so the next result does not count as a
+  // rising edge. Used when an open palm starts the run from the curtain.
+  prime(gesture) {
+    this._prev = gesture;
+  }
+
   // Call on every detector result with the raw gesture string.
   // Stabilizes brief NONE frames, then runs edge detection.
   update(rawGesture) {

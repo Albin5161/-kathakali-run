@@ -13,10 +13,16 @@ const HAND_CONNECTIONS = [
   [5, 9],  [9, 13], [13, 17],
 ];
 
+// On-canvas QA readouts (pipeline panel, gesture label, confidence badge).
+// The page shows status and the live gesture itself, so these stay off.
+const DEBUG_OVERLAY = false;
+
 export class GestureModule {
-  constructor(overlayEl, gestureInput = null) {
+  // onStatus(status) is called whenever the pipeline status string changes.
+  constructor(overlayEl, gestureInput = null, onStatus = null) {
     this._overlayEl    = overlayEl;
     this._gestureInput = gestureInput; // GestureInput | null
+    this._onStatus     = onStatus;
     this._stream       = null;
     this._video        = null;
     this._canvas       = null;
@@ -44,7 +50,7 @@ export class GestureModule {
     }
 
     console.log('[GestureModule] Camera started ✓');
-    this._status = 'camera ready';
+    this._setStatus('camera ready');
 
     this._mountPreview();
     console.log('[GestureModule] Preview mounted ✓');
@@ -71,7 +77,7 @@ export class GestureModule {
     this._gesture  = 'NONE';
     this._stopStream();
     this._unmountPreview();
-    this._status = 'idle';
+    this._setStatus('idle');
     document.removeEventListener('visibilitychange', this._onVisibilityChange);
     window.removeEventListener('beforeunload', this._onBeforeUnload);
     console.log('[GestureModule] Disabled ✓');
@@ -79,9 +85,14 @@ export class GestureModule {
 
   // ── Private ─────────────────────────────────────────────────────────────────
 
+  _setStatus(status) {
+    this._status = status;
+    this._onStatus?.(status);
+  }
+
   async _loadDetector() {
     console.log('[GestureModule] Loading HandDetector…');
-    this._status = 'loading model';
+    this._setStatus('loading model');
 
     try {
       const { HandDetector } = await import('./HandDetector.js');
@@ -92,7 +103,7 @@ export class GestureModule {
 
       await this._detector.load();
       console.log('[GestureModule] HandDetector.load() resolved — model ready ✓');
-      this._status = 'detector ready';
+      this._setStatus('detector ready');
 
       // Wire immediate dispatch: result → gesture → input, all in the onmessage task.
       // This replaces the old poll-on-next-rAF pattern and removes one frame of lag.
@@ -126,7 +137,7 @@ export class GestureModule {
 
     } catch (err) {
       console.error('[GestureModule] HandDetector failed to load:', err);
-      this._status = `error: ${err.message ?? err}`;
+      this._setStatus(`error: ${err.message ?? err}`);
       this._detector = null;
     }
   }
@@ -203,8 +214,7 @@ export class GestureModule {
     ctx.clearRect(0, 0, this._canvas.width, this._canvas.height);
 
     if (!this._detector?.ready) {
-      // Always show status panel — even if detector is null (error state)
-      this._drawDebugPanel(ctx);
+      if (DEBUG_OVERLAY) this._drawDebugPanel(ctx);
       return;
     }
 
@@ -213,8 +223,10 @@ export class GestureModule {
     // HandDetector.onResult (the onmessage callback), not here.
 
     this._drawLandmarks(ctx);
-    this._drawGestureLabel(ctx);
-    this._drawDebugPanel(ctx);
+    if (DEBUG_OVERLAY) {
+      this._drawGestureLabel(ctx);
+      this._drawDebugPanel(ctx);
+    }
   }
 
   _drawLandmarks(ctx) {
@@ -247,6 +259,8 @@ export class GestureModule {
       ctx.arc(mx(pt.x), my(pt.y), 3, 0, Math.PI * 2);
       ctx.fill();
     }
+
+    if (!DEBUG_OVERLAY) return;
 
     // Confidence badge
     const cats  = result.handedness?.[0] ?? [];
